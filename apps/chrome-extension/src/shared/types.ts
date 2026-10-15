@@ -168,6 +168,7 @@ export type RecordingStatus =
 			updatedAt: number;
 			uploadStatus?: UploadStatus;
 			upload?: UploadSummary;
+			linkCopied?: boolean;
 	  }
 	| {
 			phase: "completed";
