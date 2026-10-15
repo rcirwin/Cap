@@ -127,8 +127,13 @@ if [[ "$DOMAIN" == *.duckdns.org ]] && [ ! -f "$CAP_DIR/.duckdns" ]; then
 		subdomain=${subdomain##*.}
 		install -m 600 /dev/null "$CAP_DIR/.duckdns"
 		printf 'https://www.duckdns.org/update?domains=%s&token=%s&ip=\n' "$subdomain" "$duckdns_token" >"$CAP_DIR/.duckdns"
-		printf '*/5 * * * * root curl -fsS --max-time 20 "$(cat %s/.duckdns)" >/dev/null 2>&1\n' "$CAP_DIR" >/etc/cron.d/cap-duckdns
-		curl -fsS --max-time 20 "$(cat "$CAP_DIR/.duckdns")" >/dev/null || warn "DuckDNS update failed; check the token"
+		cat >"$CAP_DIR/duckdns-update.sh" <<'UPDATER'
+#!/bin/sh
+exec curl -fsS --max-time 20 -o /dev/null "$(cat "$(dirname "$0")/.duckdns")"
+UPDATER
+		chmod 700 "$CAP_DIR/duckdns-update.sh"
+		printf '*/5 * * * * root %s/duckdns-update.sh >/dev/null 2>&1\n' "$CAP_DIR" >/etc/cron.d/cap-duckdns
+		"$CAP_DIR/duckdns-update.sh" || warn "DuckDNS update failed; check the token"
 	fi
 fi
 
