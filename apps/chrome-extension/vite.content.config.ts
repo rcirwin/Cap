@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 // real overlay UI (built by vite.content-overlay.config.ts) from
 // web_accessible_resources when a tab actually needs it.
 export default defineConfig({
+	publicDir: false,
 	build: {
 		emptyOutDir: false,
 		outDir: "dist",
