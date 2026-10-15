@@ -86,7 +86,9 @@ function createServerEnv() {
 			CAP_ALLOWED_SIGNUP_DOMAINS: z
 				.string()
 				.optional()
-				.describe("Comma-separated list of permitted signup domains"),
+				.describe(
+					"Comma-separated list of permitted signup domains or full email addresses",
+				),
 			CAP_BLOCKED_SIGNUP_DOMAINS: z
 				.string()
 				.optional()
