@@ -10,19 +10,16 @@ import {
 	videoUploads,
 } from "@cap/database/schema";
 import type { VideoEditSpec, VideoMetadata } from "@cap/database/types";
-import { serverEnv } from "@cap/env";
 import { Storage } from "@cap/web-backend/src/Storage/index";
 import {
 	type AiGenerationLanguage,
 	parseAiGenerationLanguage,
 	Video,
 } from "@cap/web-domain";
-import { AssemblyAI } from "assemblyai";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Either, Option, Schema } from "effect";
 import { FatalError } from "workflow";
 import { start } from "workflow/api";
-import { getAssemblyAITranscriptionOptions } from "@/lib/assemblyai";
 import {
 	ENHANCED_AUDIO_CONTENT_TYPE,
 	ENHANCED_AUDIO_EXTENSION,
@@ -47,6 +44,12 @@ import {
 } from "@/lib/media-client";
 import { planSegmentsAudioExtraction } from "@/lib/segments-audio";
 import { downloadConcatenatedSegments } from "@/lib/segments-audio-download";
+import {
+	isTranscriptionConfigured,
+	NoSpokenAudioError,
+	type TranscriptionResult,
+} from "@/lib/transcription/config";
+import { transcribeAudioBuffer } from "@/lib/transcription/provider";
 import { decodeStorageVideo } from "@/lib/video-storage";
 import { runWorkflowPromise } from "@/lib/workflow-runtime";
 
@@ -75,6 +78,9 @@ interface BackfillEditTranscriptPayload {
 }
 
 const EDIT_TRANSCRIPT_TEMP_AUDIO_FILENAME = "audio-edit-transcript-v3-temp.mp3";
+
+const MISSING_TRANSCRIPTION_PROVIDER_MESSAGE =
+	"No transcription provider configured (set ASSEMBLY_API_KEY, GROQ_API_KEY, or TRANSCRIPTION_BASE_URL / TRANSCRIPTION_API_KEY)";
 
 interface TranscriptionArtifacts {
 	vtt: string;
@@ -153,7 +159,7 @@ export async function transcribeVideoWorkflow(
 			};
 		}
 
-		const transcription = await transcribeWithAssemblyAI(
+		const transcription = await transcribeWithProvider(
 			audioUrl,
 			videoData.aiGenerationLanguage,
 			videoDurationMs,
@@ -215,7 +221,7 @@ export async function backfillEditTranscriptWorkflow(
 			return { success: false };
 		}
 
-		const editTranscript = await transcribeEditTranscriptWithAssemblyAI(
+		const editTranscript = await transcribeEditTranscriptWithProvider(
 			audioUrl,
 			videoEdit ? videoEdit.editSpec.sourceDuration : (video.duration ?? 0),
 		);
@@ -255,8 +261,8 @@ export async function backfillEditTranscriptWorkflow(
 async function validateVideo(videoId: string): Promise<VideoData> {
 	"use step";
 
-	if (!serverEnv().ASSEMBLY_API_KEY) {
-		throw new FatalError("Missing ASSEMBLY_API_KEY");
+	if (!isTranscriptionConfigured()) {
+		throw new FatalError(MISSING_TRANSCRIPTION_PROVIDER_MESSAGE);
 	}
 
 	const query = await db()
@@ -330,8 +336,8 @@ async function validateEditTranscriptBackfill(
 ) {
 	"use step";
 
-	if (!serverEnv().ASSEMBLY_API_KEY) {
-		throw new FatalError("Missing ASSEMBLY_API_KEY");
+	if (!isTranscriptionConfigured()) {
+		throw new FatalError(MISSING_TRANSCRIPTION_PROVIDER_MESSAGE);
 	}
 
 	const [video] = await db()
@@ -767,7 +773,7 @@ async function extractAudioFromSegmentsImpl(
 	}
 }
 
-async function transcribeWithAssemblyAI(
+async function transcribeWithProvider(
 	audioUrl: string,
 	language: AiGenerationLanguage,
 	videoDurationMs: number,
@@ -782,29 +788,15 @@ async function transcribeWithAssemblyAI(
 	}
 
 	const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-	const client = new AssemblyAI({
-		apiKey: serverEnv().ASSEMBLY_API_KEY as string,
-	});
 
-	const transcript = await client.transcripts.transcribe({
-		audio: audioBuffer,
-		...getAssemblyAITranscriptionOptions(language),
-		disfluencies: true,
-	});
-
-	console.log(
-		`[transcribe] AssemblyAI transcript ${transcript.id} finished with status=${transcript.status}, model=${transcript.speech_model_used ?? "unknown"}`,
-	);
-
-	if (transcript.status === "error") {
-		const transcriptError = transcript.error ?? "Unknown error";
-		const message = `AssemblyAI transcription failed (id=${transcript.id}, language=${language}): ${transcriptError}`;
-
-		if (transcriptError.toLowerCase().includes("no spoken audio")) {
-			throw new FatalError(message);
+	let transcript: TranscriptionResult;
+	try {
+		transcript = await transcribeAudioBuffer(audioBuffer, { language });
+	} catch (error) {
+		if (error instanceof NoSpokenAudioError) {
+			throw new FatalError(error.message);
 		}
-
-		throw new Error(message);
+		throw error;
 	}
 
 	// One paid pass produces both artifacts: the immutable word transcript (in
@@ -821,7 +813,7 @@ async function transcribeWithAssemblyAI(
 	};
 }
 
-async function transcribeEditTranscriptWithAssemblyAI(
+async function transcribeEditTranscriptWithProvider(
 	audioUrl: string,
 	videoDurationSeconds: number,
 ): Promise<string> {
@@ -835,24 +827,9 @@ async function transcribeEditTranscriptWithAssemblyAI(
 	}
 
 	const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-	const client = new AssemblyAI({
-		apiKey: serverEnv().ASSEMBLY_API_KEY as string,
+	const transcript = await transcribeAudioBuffer(audioBuffer, {
+		language: "auto",
 	});
-	const transcript = await client.transcripts.transcribe({
-		audio: audioBuffer,
-		...getAssemblyAITranscriptionOptions("auto"),
-		disfluencies: true,
-	});
-
-	console.log(
-		`[transcribe] AssemblyAI editable transcript ${transcript.id} finished with status=${transcript.status}, model=${transcript.speech_model_used ?? "unknown"}`,
-	);
-
-	if (transcript.status === "error") {
-		throw new Error(
-			`AssemblyAI editable transcription failed (id=${transcript.id}): ${transcript.error ?? "Unknown error"}`,
-		);
-	}
 
 	const durationMs =
 		videoDurationSeconds > 0

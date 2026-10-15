@@ -39,6 +39,7 @@ import {
 } from "@/lib/live-transcribe-core";
 import { downloadConcatenatedSegmentsToBuffer } from "@/lib/segments-audio-download";
 import { transcribeVideo } from "@/lib/transcribe";
+import { getTranscriptionProvider } from "@/lib/transcription/config";
 import { decodeStorageVideo } from "@/lib/video-storage";
 import { runWorkflowPromise } from "@/lib/workflow-runtime";
 
@@ -210,8 +211,12 @@ async function initLiveTranscription(
 ): Promise<InitResult> {
 	"use step";
 
-	if (!serverEnv().ASSEMBLY_API_KEY) {
-		return { ok: false, reason: "missing ASSEMBLY_API_KEY" };
+	if (getTranscriptionProvider() !== "assemblyai") {
+		return {
+			ok: false,
+			reason:
+				"live transcription requires the assemblyai transcription provider",
+		};
 	}
 
 	const [row] = await db()

@@ -98,7 +98,36 @@ function createServerEnv() {
 			ASSEMBLY_API_KEY: z.string().optional().describe("Audio transcription"),
 			ANTHROPIC_API_KEY: z.string().optional().describe("AI chat"),
 			OPENAI_API_KEY: z.string().optional().describe("AI summaries"),
-			GROQ_API_KEY: z.string().optional().describe("AI summaries"),
+			GROQ_API_KEY: z
+				.string()
+				.optional()
+				.describe(
+					"AI summaries, and Whisper transcription via Groq when ASSEMBLY_API_KEY is not set",
+				),
+			TRANSCRIPTION_PROVIDER: z
+				.union([z.literal("assemblyai"), z.literal("openai-compatible")])
+				.optional()
+				.describe(
+					"Audio transcription provider. When unset, 'assemblyai' is used if ASSEMBLY_API_KEY is set, otherwise 'openai-compatible' if TRANSCRIPTION_BASE_URL, TRANSCRIPTION_API_KEY or GROQ_API_KEY is set.",
+				),
+			TRANSCRIPTION_BASE_URL: z
+				.string()
+				.optional()
+				.describe(
+					"Base URL of an OpenAI-compatible Whisper endpoint (POST {base}/audio/transcriptions). Defaults to Groq (https://api.groq.com/openai/v1).",
+				),
+			TRANSCRIPTION_API_KEY: z
+				.string()
+				.optional()
+				.describe(
+					"API key for the 'openai-compatible' transcription provider. Falls back to GROQ_API_KEY when the base URL is Groq; may be omitted for local servers.",
+				),
+			TRANSCRIPTION_MODEL: z
+				.string()
+				.optional()
+				.describe(
+					"Whisper model for the 'openai-compatible' transcription provider (default whisper-large-v3-turbo; use whisper-1 for OpenAI).",
+				),
 			AI_PROVIDER: z
 				.union([
 					z.literal("assemblyai"),
