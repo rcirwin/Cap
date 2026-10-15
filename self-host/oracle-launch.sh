@@ -35,7 +35,10 @@ image=$(oci compute image list -c "$compartment" \
 	--shape VM.Standard.A1.Flex --sort-by TIMECREATED --sort-order DESC \
 	--query 'data[0].id' --raw-output)
 for value in ad subnet image; do
-	[ -n "${!value}" ] && [ "${!value}" != "null" ] || { echo "lookup failed: $value" >&2; exit 1; }
+	if [ -z "${!value}" ] || [ "${!value}" = "null" ]; then
+		echo "lookup failed: $value" >&2
+		exit 1
+	fi
 done
 
 existing=$(oci compute instance list -c "$compartment" --display-name "$NAME" \
