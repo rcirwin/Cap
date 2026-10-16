@@ -13,7 +13,6 @@ import {
 	videos,
 	videoUploads,
 } from "@cap/database/schema";
-import { serverEnv } from "@cap/env";
 import {
 	Database,
 	ImageUploads,
@@ -33,6 +32,7 @@ import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { runPromise } from "@/lib/server";
+import { isViewAnalyticsEnabled } from "@/lib/view-analytics";
 import { SharedCaps } from "./SharedCaps";
 
 export const metadata: Metadata = {
@@ -430,9 +430,7 @@ export default async function SharedCapsPage(props: {
 				count={totalCount}
 				spaceData={resolvedSpace}
 				spaceId={params.spaceId as Space.SpaceIdOrOrganisationId}
-				analyticsEnabled={Boolean(
-					serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
-				)}
+				analyticsEnabled={isViewAnalyticsEnabled()}
 				spaceMembers={spaceMembersData}
 				organizationMembers={organizationMembersData}
 				currentUserId={user.id}
@@ -568,9 +566,7 @@ export default async function SharedCapsPage(props: {
 				hideSharedWith
 				organizationData={organization}
 				spaceId={params.spaceId as Space.SpaceIdOrOrganisationId}
-				analyticsEnabled={Boolean(
-					serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
-				)}
+				analyticsEnabled={isViewAnalyticsEnabled()}
 				organizationMembers={organizationMembersData}
 				currentUserId={user.id}
 				folders={foldersData}

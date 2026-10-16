@@ -30,6 +30,7 @@ import {
 } from "@/app/s/[videoId]/_components/utils/transcript-utils";
 import type { SharePageBranding } from "@/lib/share-branding";
 import type { ShareCallToAction } from "@/lib/share-call-to-action";
+import { trackVideoView } from "@/lib/video-view-tracking";
 import { usePlayerJsReceiver } from "./use-player-js-receiver";
 
 declare global {
@@ -76,7 +77,7 @@ export const EmbedVideo = forwardRef<
 		{
 			data,
 			branding,
-			user: _user,
+			user,
 			comments: _comments,
 			chapters = [],
 			ownerName,
@@ -102,6 +103,7 @@ export const EmbedVideo = forwardRef<
 			data.duration ?? 0,
 		);
 		const [isPlaying, setIsPlaying] = useState(false);
+		const viewTrackedRef = useRef(false);
 		const [userConfirmedStopped, setUserConfirmedStopped] = useState(false);
 		const segmentUploadProgress = useUploadProgress(
 			data.id,
@@ -257,7 +259,17 @@ export const EmbedVideo = forwardRef<
 				<div
 					ref={playerContainerRef}
 					className="relative w-screen h-screen rounded-xl"
-					onPlayCapture={() => setIsPlaying(true)}
+					onPlayCapture={() => {
+						setIsPlaying(true);
+						if (viewTrackedRef.current || user?.id === data.ownerId) return;
+						viewTrackedRef.current = true;
+						trackVideoView({
+							videoId: data.id,
+							orgId: data.orgId,
+							ownerId: data.ownerId,
+							pathname: `/s/${data.id}`,
+						});
+					}}
 					onPauseCapture={() => setIsPlaying(false)}
 					onEndedCapture={() => setIsPlaying(false)}
 				>

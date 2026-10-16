@@ -188,6 +188,9 @@ export class Organisations extends Effect.Service<Organisations>()(
 								.delete(Db.notifications)
 								.where(Dz.inArray(Db.notifications.videoId, videoIds));
 							await tx
+								.delete(Db.videoViews)
+								.where(Dz.inArray(Db.videoViews.videoId, videoIds));
+							await tx
 								.delete(Db.videoUploads)
 								.where(Dz.inArray(Db.videoUploads.videoId, videoIds));
 							await tx
@@ -230,6 +233,9 @@ export class Organisations extends Effect.Service<Organisations>()(
 						await tx
 							.delete(Db.notifications)
 							.where(Dz.eq(Db.notifications.orgId, id));
+						await tx
+							.delete(Db.videoViews)
+							.where(Dz.eq(Db.videoViews.orgId, id));
 						await tx
 							.delete(Db.folders)
 							.where(Dz.eq(Db.folders.organizationId, id));

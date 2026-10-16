@@ -1,18 +1,26 @@
 import { db } from "@cap/database";
 import { videos, videoUploads } from "@cap/database/schema";
-import { provideOptionalAuth, Tinybird } from "@cap/web-backend";
-import { CurrentUser, Video } from "@cap/web-domain";
+import { provideOptionalAuth, Tinybird, ViewAnalytics } from "@cap/web-backend";
+import { CurrentUser, type Organisation, User, Video } from "@cap/web-domain";
 import { eq } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import type { NextRequest } from "next/server";
 import UAParser from "ua-parser-js";
 
 import { getAnonymousName } from "@/lib/anonymous-names";
+import { normalizeGuestName } from "@/lib/guest-name";
 import {
 	createAnonymousViewNotification,
 	sendFirstViewEmail,
 } from "@/lib/Notification";
 import { runPromise } from "@/lib/server";
+import {
+	createViewThrottle,
+	MAX_TRACK_PAYLOAD_LENGTH,
+	readViewerGeo,
+	readViewerIp,
+	sanitizeTrackValue,
+} from "@/lib/view-analytics";
 
 interface TrackPayload {
 	videoId: string;
@@ -23,33 +31,38 @@ interface TrackPayload {
 	hostname?: string | null;
 	userAgent?: string;
 	occurredAt?: string;
+	guestName?: string | null;
 }
 
 const VIEW_TRACKING_DELAY_MS = 2 * 60 * 1000;
 
-const sanitizeString = (value?: string | null) => {
-	const trimmed = value?.trim();
-	return trimmed && trimmed !== "unknown" ? trimmed.slice(0, 256) : undefined;
-};
+const allowViewWrite = createViewThrottle({
+	limit: 60,
+	windowMs: 60 * 1000,
+	maxKeys: 10_000,
+});
 
-const decodeUrlEncodedHeaderValue = (value?: string | null) => {
-	if (!value) return value;
-	try {
-		return decodeURIComponent(value);
-	} catch {
-		return value;
-	}
-};
+const payloadTooLarge = () =>
+	Response.json({ error: "Payload too large" }, { status: 413 });
 
 export async function POST(request: NextRequest) {
+	if (
+		Number(request.headers.get("content-length") ?? 0) >
+		MAX_TRACK_PAYLOAD_LENGTH
+	) {
+		return payloadTooLarge();
+	}
+
 	let body: TrackPayload;
 	try {
-		body = (await request.json()) as TrackPayload;
+		const rawBody = await request.text();
+		if (rawBody.length > MAX_TRACK_PAYLOAD_LENGTH) return payloadTooLarge();
+		body = JSON.parse(rawBody) as TrackPayload;
 	} catch (_error) {
 		return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
 	}
 
-	if (!body?.videoId) {
+	if (!body?.videoId || typeof body.videoId !== "string") {
 		return Response.json({ error: "videoId is required" }, { status: 400 });
 	}
 
@@ -60,8 +73,8 @@ export async function POST(request: NextRequest) {
 	const sessionId =
 		parsedSessionId && parsedSessionId !== "anonymous" ? parsedSessionId : null;
 	const userAgent =
-		sanitizeString(request.headers.get("user-agent")) ||
-		sanitizeString(body.userAgent) ||
+		sanitizeTrackValue(request.headers.get("user-agent")) ||
+		sanitizeTrackValue(body.userAgent) ||
 		"unknown";
 	const parser = new UAParser(userAgent);
 	const browserName = parser.getBrowser().name ?? "unknown";
@@ -70,18 +83,13 @@ export async function POST(request: NextRequest) {
 
 	const timestamp = body.occurredAt ? new Date(body.occurredAt) : new Date();
 
-	const country =
-		sanitizeString(request.headers.get("x-vercel-ip-country")) || "";
-	const region =
-		sanitizeString(request.headers.get("x-vercel-ip-country-region")) || "";
-	const city =
-		sanitizeString(
-			decodeUrlEncodedHeaderValue(request.headers.get("x-vercel-ip-city")),
-		) || "";
+	const { country, region, city } = readViewerGeo(request.headers);
+	const viewerIp = readViewerIp(request.headers);
+	const guestName = normalizeGuestName(body.guestName);
 
 	const hostname =
-		sanitizeString(body.hostname) ||
-		sanitizeString(request.nextUrl.hostname) ||
+		sanitizeTrackValue(body.hostname) ||
+		sanitizeTrackValue(request.nextUrl.hostname) ||
 		"";
 
 	const pathname = body.pathname ?? `/s/${body.videoId}`;
@@ -108,6 +116,7 @@ export async function POST(request: NextRequest) {
 				db()
 					.select({
 						ownerId: videos.ownerId,
+						orgId: videos.orgId,
 						firstViewEmailSentAt: videos.firstViewEmailSentAt,
 						videoName: videos.name,
 						createdAt: videos.createdAt,
@@ -123,6 +132,7 @@ export async function POST(request: NextRequest) {
 					() =>
 						[] as {
 							ownerId: string;
+							orgId: Organisation.OrganisationId;
 							firstViewEmailSentAt: Date | null;
 							videoName: string;
 							createdAt: Date;
@@ -151,24 +161,50 @@ export async function POST(request: NextRequest) {
 				(hostname ? `domain:${hostname}` : "public");
 
 			const tinybird = yield* Tinybird;
-			yield* tinybird.appendEvents([
-				{
-					timestamp: timestamp.toISOString(),
-					session_id: sessionId ?? "anon",
-					action: "page_hit",
-					version: "1.0",
-					tenant_id: tenantId,
-					video_id: body.videoId,
-					pathname,
-					country,
-					region,
-					city,
-					browser: browserName,
-					device: deviceType,
-					os: osName,
-					user_id: userId,
-				},
-			]);
+			if (tinybird.enabled) {
+				yield* tinybird.appendEvents([
+					{
+						timestamp: timestamp.toISOString(),
+						session_id: sessionId ?? "anon",
+						action: "page_hit",
+						version: "1.0",
+						tenant_id: tenantId,
+						video_id: body.videoId,
+						pathname,
+						country,
+						region,
+						city,
+						browser: browserName,
+						device: deviceType,
+						os: osName,
+						user_id: userId,
+					},
+				]);
+			} else if (videoRecord && (!viewerIp || allowViewWrite(viewerIp))) {
+				const viewAnalytics = yield* ViewAnalytics;
+				yield* viewAnalytics
+					.record({
+						videoId: Video.VideoId.make(body.videoId),
+						orgId: videoRecord.orgId,
+						sessionId: sessionId ?? (userId ? `user:${userId}` : "anon"),
+						viewerUserId: userId ? User.UserId.make(userId) : null,
+						viewerName: sessionId ? guestName : null,
+						country,
+						region,
+						city,
+						browser: browserName,
+						os: osName,
+						device: deviceType,
+						createdAt: new Date(),
+					})
+					.pipe(
+						Effect.catchAll((error) =>
+							Effect.sync(() =>
+								console.error("Failed to record video view:", error),
+							),
+						),
+					);
+			}
 
 			const isNewVideo =
 				videoRecord && videoRecord.createdAt >= ANON_NOTIF_CUTOFF;
