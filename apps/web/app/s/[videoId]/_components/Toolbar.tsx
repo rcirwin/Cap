@@ -8,9 +8,11 @@ import dynamic from "next/dynamic";
 import { startTransition, useEffect, useState } from "react";
 import { newComment } from "@/actions/videos/new-comment";
 import { useCurrentUser } from "@/app/Layout/AuthContext";
+import { COMMENT_REACTIONS } from "@/lib/comment-reactions";
 import type { CommentType } from "../Share";
 import type { VideoData } from "../types";
 import { AuthOverlay } from "./AuthOverlayLazy";
+import { GuestIdentityBar, useGuestComments } from "./guest/GuestComments";
 import { RecordActionButtons } from "./media-comment/record-actions";
 import type { RecordIntentKind } from "./timeline/TimelineComposer";
 
@@ -63,6 +65,8 @@ export const Toolbar = ({
 	canRecordMedia = false,
 }: ToolbarProps) => {
 	const user = useCurrentUser();
+	const guestComments = useGuestComments();
+	const guest = user ? null : guestComments;
 	const [commentBoxOpen, setCommentBoxOpen] = useState(false);
 	const [comment, setComment] = useState("");
 	const [showAuthOverlay, setShowAuthOverlay] = useState(false);
@@ -72,6 +76,8 @@ export const Toolbar = ({
 	} | null>(null);
 	const canComment = !disableComments;
 	const canReact = !disableReactions;
+	const guestCanComment = canComment && Boolean(guest?.canComment);
+	const guestCanReact = canReact && Boolean(guest?.canReact);
 
 	const startRecording = (kind: RecordIntentKind) => {
 		// Anchor to the playhead like a text comment, pause, and fold the box
@@ -85,11 +91,33 @@ export const Toolbar = ({
 	};
 
 	const handleEmojiClick = async (emoji: string) => {
-		if (!canReact || !user) return;
+		if (!canReact) return;
 		const videoElement = document.querySelector("video") as HTMLVideoElement;
 		const currentTime = data.isScreenshot
 			? null
 			: videoElement?.currentTime || 0;
+
+		if (!user) {
+			if (!guest || !guestCanReact) return;
+			await guest.postComment(
+				{
+					videoId: data.id,
+					type: "emoji",
+					content: emoji,
+					parentCommentId: "" as Comment.CommentId,
+					timestamp: currentTime,
+				},
+				{
+					onOptimistic: onOptimisticComment,
+					onSuccess: (saved) =>
+						startTransition(() => {
+							onCommentSuccess?.(saved);
+						}),
+				},
+			);
+			return;
+		}
+
 		const optimisticComment: CommentType = {
 			id: `temp-${Date.now()}` as Comment.CommentId,
 			authorId: user.id,
@@ -131,13 +159,44 @@ export const Toolbar = ({
 	};
 
 	const handleCommentSubmit = async () => {
-		if (!canComment || comment.length === 0 || !user) {
+		if (!canComment || comment.length === 0) {
 			return;
 		}
 		const videoElement = document.querySelector("video") as HTMLVideoElement;
 		const currentTime = data.isScreenshot
 			? null
 			: videoElement?.currentTime || 0;
+
+		if (!user) {
+			const content = comment.trim();
+			if (!guest || !guestCanComment || !content) return;
+			const saved = await guest.postComment(
+				{
+					videoId: data.id,
+					type: "text",
+					content,
+					parentCommentId: "" as Comment.CommentId,
+					timestamp: currentTime,
+				},
+				{
+					onOptimistic: (optimistic) => {
+						setCommentBoxOpen(false);
+						setComment("");
+						onOptimisticComment?.(optimistic);
+					},
+					onSuccess: (savedComment) =>
+						startTransition(() => {
+							onCommentSuccess?.(savedComment);
+						}),
+				},
+			);
+			if (!saved) {
+				setComment(content);
+				setCommentBoxOpen(true);
+			}
+			return;
+		}
+
 		const optimisticComment: CommentType = {
 			id: `temp-${Date.now()}` as Comment.CommentId,
 			authorId: user.id,
@@ -195,17 +254,7 @@ export const Toolbar = ({
 				)
 			) {
 				e.preventDefault();
-				if (!user) {
-					setShowAuthOverlay(true);
-					return;
-				}
-				const videoElement = document.querySelector(
-					"video",
-				) as HTMLVideoElement;
-				if (videoElement) {
-					videoElement.pause();
-				}
-				setCommentBoxOpen(true);
+				void openCommentBox();
 			}
 		};
 
@@ -213,19 +262,26 @@ export const Toolbar = ({
 		return () => {
 			window.removeEventListener("keydown", handleKeyPress);
 		};
-	}, [canComment, commentBoxOpen, user]);
+	});
 
-	const handleCommentClick = () => {
-		if (!canComment) return;
+	const openCommentBox = async () => {
 		if (!user) {
-			setShowAuthOverlay(true);
-			return;
+			if (!guest || !guestCanComment) {
+				setShowAuthOverlay(true);
+				return;
+			}
+			if (!(await guest.ensureName())) return;
 		}
 		const videoElement = document.querySelector("video") as HTMLVideoElement;
 		if (videoElement) {
 			videoElement.pause();
 		}
 		setCommentBoxOpen(true);
+	};
+
+	const handleCommentClick = () => {
+		if (!canComment) return;
+		void openCommentBox();
 	};
 
 	if (!canComment && !canReact) {
@@ -318,7 +374,7 @@ export const Toolbar = ({
 						>
 							{canReact && (
 								<div className="flex gap-2 justify-evenly items-center w-full md:w-fit md:justify-center">
-									{REACTIONS.map((reaction) => (
+									{COMMENT_REACTIONS.map((reaction) => (
 										<EmojiButton
 											key={reaction.emoji}
 											emoji={reaction.emoji}
@@ -356,6 +412,10 @@ export const Toolbar = ({
 				</AnimatePresence>
 			</motion.div>
 
+			{guest && guestCanComment && commentBoxOpen && (
+				<GuestIdentityBar className="px-3 mx-auto mt-2 w-full max-w-md" />
+			)}
+
 			{recordIntent && (
 				<RecorderSurface
 					kind={recordIntent.kind}
@@ -377,30 +437,3 @@ export const Toolbar = ({
 		</>
 	);
 };
-
-const REACTIONS = [
-	{
-		emoji: "😂",
-		label: "joy",
-	},
-	{
-		emoji: "😍",
-		label: "love",
-	},
-	{
-		emoji: "😮",
-		label: "wow",
-	},
-	{
-		emoji: "🙌",
-		label: "yay",
-	},
-	{
-		emoji: "👍",
-		label: "up",
-	},
-	{
-		emoji: "👎",
-		label: "down",
-	},
-];

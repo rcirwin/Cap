@@ -2,26 +2,34 @@
 
 import { db } from "@cap/database";
 import { getCurrentUser } from "@cap/database/auth/session";
-import { comments, notifications } from "@cap/database/schema";
+import { comments, notifications, videos } from "@cap/database/schema";
 import { Storage, VideosRepo } from "@cap/web-backend";
 import type { Comment, Video } from "@cap/web-domain";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import { revalidatePath } from "next/cache";
+import { type CommentActor, canDeleteComment } from "@/lib/guest-comments";
+import { readGuestId } from "@/lib/guest-identity";
 import * as EffectRuntime from "@/lib/server";
+
+async function getCommentActor(): Promise<CommentActor | null> {
+	const user = await getCurrentUser();
+	if (user) return { kind: "user", id: user.id };
+	const guestId = await readGuestId();
+	return guestId ? { kind: "guest", id: guestId } : null;
+}
 
 export async function deleteComment({
 	commentId,
-	parentId,
 	videoId,
 }: {
 	commentId: Comment.CommentId;
 	parentId: Comment.CommentId | null;
 	videoId: Video.VideoId;
 }) {
-	const user = await getCurrentUser();
+	const actor = await getCommentActor();
 
-	if (!user) {
+	if (!actor) {
 		throw new Error("User not authenticated");
 	}
 
@@ -35,25 +43,38 @@ export async function deleteComment({
 			mediaKey: string;
 			thumbnailKey: string | null;
 		} | null = null;
+		let commentVideoId = videoId;
 
 		await db().transaction(async (tx) => {
-			// First, verify the comment exists and belongs to the current user
 			const [existingComment] = await tx
 				.select({
 					id: comments.id,
+					authorId: comments.authorId,
 					videoId: comments.videoId,
+					parentCommentId: comments.parentCommentId,
 					mediaKey: comments.mediaKey,
 					mediaMeta: comments.mediaMeta,
+					videoOwnerId: videos.ownerId,
 				})
 				.from(comments)
-				.where(and(eq(comments.id, commentId), eq(comments.authorId, user.id)))
+				.leftJoin(videos, eq(videos.id, comments.videoId))
+				.where(eq(comments.id, commentId))
 				.limit(1);
 
-			if (!existingComment) {
+			if (
+				!existingComment ||
+				!canDeleteComment({
+					actor,
+					authorId: existingComment.authorId,
+					videoOwnerId: existingComment.videoOwnerId,
+				})
+			) {
 				throw new Error(
 					"Comment not found or you don't have permission to delete it",
 				);
 			}
+
+			commentVideoId = existingComment.videoId;
 
 			if (existingComment.mediaKey) {
 				deletedMedia = {
@@ -65,12 +86,9 @@ export async function deleteComment({
 				};
 			}
 
-			await tx
-				.delete(comments)
-				.where(and(eq(comments.id, commentId), eq(comments.authorId, user.id)));
+			await tx.delete(comments).where(eq(comments.id, commentId));
 
-			// Delete related notifications
-			if (parentId) {
+			if (existingComment.parentCommentId) {
 				await tx
 					.delete(notifications)
 					.where(
@@ -84,17 +102,19 @@ export async function deleteComment({
 					.delete(notifications)
 					.where(
 						and(
-							eq(notifications.type, "comment"),
+							inArray(notifications.type, ["comment", "reaction"]),
 							sql`JSON_EXTRACT(${notifications.data}, '$.comment.id') = ${commentId}`,
 						),
 					);
 
+				// createNotification stores parentCommentId at the top level of
+				// data, not under comment.
 				await tx
 					.delete(notifications)
 					.where(
 						and(
 							eq(notifications.type, "reply"),
-							sql`JSON_EXTRACT(${notifications.data}, '$.comment.parentCommentId') = ${commentId}`,
+							sql`JSON_EXTRACT(${notifications.data}, '$.parentCommentId') = ${commentId}`,
 						),
 					);
 			}
@@ -124,7 +144,7 @@ export async function deleteComment({
 			);
 		}
 
-		revalidatePath(`/s/${videoId}`);
+		revalidatePath(`/s/${commentVideoId}`);
 		return { success: true };
 	} catch (error) {
 		console.error("Error deleting comment:", error);

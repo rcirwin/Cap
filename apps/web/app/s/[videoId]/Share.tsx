@@ -1,6 +1,5 @@
 "use client";
 
-import type { comments as commentsSchema } from "@cap/database/schema";
 import type { ViewerSettingKey } from "@cap/web-backend";
 import type { ImageUpload, Video } from "@cap/web-domain";
 import { useQuery } from "@tanstack/react-query";
@@ -27,9 +26,14 @@ import {
 } from "@/actions/videos/get-status";
 import type { OrganizationSettings } from "@/app/(org)/dashboard/dashboard-data";
 import { SignedImageUrl } from "@/components/SignedImageUrl";
+import type { CommentRow } from "@/lib/comment-row";
 import type { ShareDashboardDestination } from "@/lib/share-dashboard-destination";
 import { CaptionProvider } from "./_components/CaptionContext";
 import { DashboardBackLink } from "./_components/DashboardBackLink";
+import {
+	type GuestCommentsConfig,
+	GuestCommentsProvider,
+} from "./_components/guest/GuestComments";
 import { PlaybackProvider } from "./_components/playback/PlaybackContext";
 import { ShareVideo } from "./_components/ShareVideo";
 import { type ShareView, ShareViewToggle } from "./_components/ShareViewToggle";
@@ -55,12 +59,12 @@ const SummaryChapters = dynamic(() => import("./_components/SummaryChapters"));
  */
 const TIMELINE_GUIDE_URL = "/blog/timeline-view";
 
-type CommentWithAuthor = typeof commentsSchema.$inferSelect & {
+type CommentWithAuthor = CommentRow & {
 	authorName: string | null;
 	authorImage: ImageUpload.ImageUrl | null;
 };
 
-export type CommentType = typeof commentsSchema.$inferSelect & {
+export type CommentType = CommentRow & {
 	authorName?: string | null;
 	authorImage?: ImageUpload.ImageUrl | null;
 	sending?: boolean;
@@ -210,6 +214,8 @@ interface ShareProps {
 	captionsInitiallyOff?: boolean;
 	canRecordMedia?: boolean;
 	viewerSignedIn?: boolean;
+	/** Set when this signed-out viewer may comment or react with just a name. */
+	guestComments?: GuestCommentsConfig | null;
 	/**
 	 * The page header. Passed in rather than rendered above `Share` so the
 	 * timeline view can swap it for a slim bar without the page owning which
@@ -321,7 +327,13 @@ const useVideoStatus = (
 	});
 };
 
-export const Share = ({
+export const Share = ({ guestComments = null, ...props }: ShareProps) => (
+	<GuestCommentsProvider config={guestComments}>
+		<ShareContent {...props} />
+	</GuestCommentsProvider>
+);
+
+const ShareContent = ({
 	data,
 	initialPlaybackUrl,
 	comments,
@@ -341,7 +353,7 @@ export const Share = ({
 	viewerSignedIn = false,
 	header,
 	dashboardDestination = null,
-}: ShareProps) => {
+}: Omit<ShareProps, "guestComments">) => {
 	const isScreenshot = data.isScreenshot === true;
 	// Memoized: a fresh Date each render would defeat the memoized `data`
 	// objects below and re-render Sidebar's whole tree on every poll tick.

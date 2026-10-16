@@ -7,6 +7,7 @@ import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import type { NotificationType } from "@/lib/Notification";
+import { resolveNotificationAuthor } from "@/lib/notification-author";
 import { runPromise } from "@/lib/server";
 import { jsonExtractString } from "@/utils/sql";
 
@@ -103,11 +104,15 @@ export async function GET() {
 							});
 						}
 
-						if (!author) return null;
+						const resolvedAuthor = resolveNotificationAuthor({
+							author,
+							data: notification.data,
+						});
+						if (!resolvedAuthor) return null;
 
-						const resolvedAvatar = author.avatar
+						const resolvedAvatar = resolvedAuthor.avatar
 							? yield* imageUploads
-									.resolveImageUrl(author.avatar)
+									.resolveImageUrl(resolvedAuthor.avatar)
 									.pipe(Effect.catchAll(() => Effect.succeed(null)))
 							: null;
 
@@ -119,11 +124,7 @@ export async function GET() {
 							createdAt: notification.createdAt,
 							data: notification.data,
 							comment: notification.data.comment,
-							author: {
-								id: author.id,
-								name: author.name ?? "Unknown",
-								avatar: resolvedAvatar,
-							},
+							author: { ...resolvedAuthor, avatar: resolvedAvatar },
 						});
 					}).pipe(
 						Effect.catchAll((error) => {
