@@ -85,6 +85,11 @@ vi.mock("@/app/(org)/dashboard/_components/Navbar/server", () => ({
 	updateActiveOrganization: vi.fn(),
 }));
 
+vi.mock("@/lib/cap-marketing", () => ({
+	showCapMarketing: () => true,
+	capHomeHref: (ref: string) => `/?ref=${ref}`,
+}));
+
 vi.mock("@/app/s/[videoId]/_components/CaptionContext", () => ({
 	CaptionProvider: ({ children }: { children?: ReactNode }) => children,
 }));

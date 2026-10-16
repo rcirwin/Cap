@@ -28,6 +28,7 @@ import {
 	parseVTT,
 	type TranscriptEntry,
 } from "@/app/s/[videoId]/_components/utils/transcript-utils";
+import { showCapMarketing } from "@/lib/cap-marketing";
 import type { CommentRow } from "@/lib/comment-row";
 import type { SharePageBranding } from "@/lib/share-branding";
 import type { ShareCallToAction } from "@/lib/share-call-to-action";
@@ -385,7 +386,7 @@ export const EmbedVideo = forwardRef<
 											className="h-8 w-auto max-w-40 object-contain"
 										/>
 									</motion.div>
-								) : branding?.type === "cap" ? (
+								) : branding?.type === "cap" && showCapMarketing() ? (
 									<motion.button
 										initial={{ opacity: 0, y: 10 }}
 										animate={{ opacity: 1, y: 0 }}
