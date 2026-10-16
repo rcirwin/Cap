@@ -57,6 +57,9 @@ services:
       CAP_ALLOWED_SIGNUP_DOMAINS: ${CAP_ALLOWED_SIGNUP_DOMAINS:?set your own email so nobody else can sign up}
       CAP_VIDEOS_DEFAULT_PUBLIC: ${CAP_VIDEOS_DEFAULT_PUBLIC:-true}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      CAP_GUEST_COMMENTS: ${CAP_GUEST_COMMENTS:-true}
       WORKFLOW_LOCAL_DATA_DIR: /var/lib/cap-workflow
     volumes:
       - cap-workflow-data:/var/lib/cap-workflow

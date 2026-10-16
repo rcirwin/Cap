@@ -83,10 +83,11 @@ fi
 
 mkdir -p "$CAP_DIR"
 log "Fetching deployment files into $CAP_DIR"
-for file in docker-compose.yml Caddyfile login-code.sh set-env.sh; do
+scripts="login-code.sh set-env.sh configure-email.sh configure-backups.sh backup.sh restore.sh"
+for file in docker-compose.yml Caddyfile $scripts; do
 	curl -fsSL "$CAP_REPO_RAW/$file" -o "$CAP_DIR/$file"
 done
-chmod +x "$CAP_DIR/login-code.sh" "$CAP_DIR/set-env.sh"
+for file in $scripts; do chmod +x "$CAP_DIR/$file"; done
 
 IP=$(public_ip)
 
@@ -176,6 +177,8 @@ Sign in:
   1. Open https://$DOMAIN/login and enter $(env_value CAP_ALLOWED_SIGNUP_DOMAINS)
   2. Get the one-time code:  sudo $CAP_DIR/login-code.sh
 
+Email notifications (Gmail app password): sudo $CAP_DIR/configure-email.sh
+Nightly backups (Cloudflare R2 / S3):     sudo $CAP_DIR/configure-backups.sh
 Add or change a key later (e.g. Groq):  sudo $CAP_DIR/set-env.sh GROQ_API_KEY
 Update to the newest build:            cd $CAP_DIR && sudo docker compose pull && sudo docker compose up -d
 EOF
