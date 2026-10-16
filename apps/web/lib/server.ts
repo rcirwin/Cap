@@ -18,6 +18,7 @@ import {
 	Videos,
 	VideosPolicy,
 	VideosRepo,
+	ViewAnalytics,
 } from "@cap/web-backend";
 import { type HttpAuthMiddleware, Video } from "@cap/web-domain";
 import {
@@ -47,6 +48,7 @@ export const Dependencies = Layer.mergeAll(
 	VideosPolicy.Default,
 	VideosRepo.Default,
 	Tinybird.Default,
+	ViewAnalytics.Default,
 	Extensions.Default,
 	Folders.Default,
 	SpacesPolicy.Default,

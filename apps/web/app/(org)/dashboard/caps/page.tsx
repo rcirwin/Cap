@@ -11,7 +11,6 @@ import {
 	videos,
 	videoUploads,
 } from "@cap/database/schema";
-import { serverEnv } from "@cap/env";
 import {
 	Database,
 	ImageUploads,
@@ -23,6 +22,7 @@ import { type Array, Effect } from "effect";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { runPromise } from "@/lib/server";
+import { isViewAnalyticsEnabled } from "@/lib/view-analytics";
 import { Caps } from "./Caps";
 
 export const metadata: Metadata = {
@@ -331,9 +331,7 @@ export default async function CapsPage(props: PageProps<"/dashboard/caps">) {
 			data={processedVideoData}
 			folders={foldersData}
 			count={totalCount}
-			analyticsEnabled={Boolean(
-				serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
-			)}
+			analyticsEnabled={isViewAnalyticsEnabled()}
 		/>
 	);
 }

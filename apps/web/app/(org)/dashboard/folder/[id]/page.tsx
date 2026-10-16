@@ -1,5 +1,4 @@
 import { getCurrentUser } from "@cap/database/auth/session";
-import { serverEnv } from "@cap/env";
 import { makeCurrentUserLayer } from "@cap/web-backend";
 import { Folder } from "@cap/web-domain";
 import { Effect } from "effect";
@@ -12,6 +11,7 @@ import {
 } from "@/lib/folder";
 import { isOrganizationOwnerPro } from "@/lib/org-pro";
 import { runPromise } from "@/lib/server";
+import { isViewAnalyticsEnabled } from "@/lib/view-analytics";
 
 import { CollectionShareControl } from "../../_components/CollectionShareControl";
 import { UploadCapButton } from "../../caps/components";
@@ -119,9 +119,7 @@ const FolderPage = async (props: PageProps<"/dashboard/folder/[id]">) => {
 					currentFolderId={folderId}
 					canMove={share.canManage}
 					allowBulkDelete
-					analyticsEnabled={Boolean(
-						serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
-					)}
+					analyticsEnabled={isViewAnalyticsEnabled()}
 				/>
 			</div>
 		);

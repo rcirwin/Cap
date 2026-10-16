@@ -4,6 +4,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import { getVideoAnalytics } from "@/actions/videos/get-analytics";
 import { CapCardAnalytics } from "@/app/(org)/dashboard/caps/components/CapCard/CapCardAnalytics";
 import type { CommentType } from "../../../Share";
+import { SeenBy } from "./SeenBy";
 
 const Analytics = (props: {
 	videoId: string;
@@ -41,14 +42,17 @@ const Analytics = (props: {
 	);
 
 	return (
-		<CapCardAnalytics
-			isLoadingAnalytics={props.isLoadingAnalytics}
-			capId={props.videoId}
-			displayCount={views}
-			totalComments={totalComments}
-			totalReactions={totalReactions}
-			isOwner={props.isOwner}
-		/>
+		<div className="flex flex-1 gap-3 justify-between items-center min-w-0">
+			<CapCardAnalytics
+				isLoadingAnalytics={props.isLoadingAnalytics}
+				capId={props.videoId}
+				displayCount={views}
+				totalComments={totalComments}
+				totalReactions={totalReactions}
+				isOwner={props.isOwner}
+			/>
+			<SeenBy videoId={props.videoId} />
+		</div>
 	);
 };
 
