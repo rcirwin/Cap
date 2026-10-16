@@ -1,12 +1,12 @@
-import type { comments as commentsSchema } from "@cap/database/schema";
 import { classNames } from "@cap/utils";
-import type { ImageUpload, Video } from "@cap/web-domain";
+import type { Video } from "@cap/web-domain";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { forwardRef, Suspense, useState } from "react";
 import type { OrganizationSettings } from "@/app/(org)/dashboard/dashboard-data";
 import { useCurrentUser } from "@/app/Layout/AuthContext";
+import type { CommentType } from "../Share";
 import type { VideoData } from "../types";
 import { Activity } from "./tabs/Activity";
 import type { SummaryEditingState } from "./tabs/SummaryEditor";
@@ -20,21 +20,13 @@ const importSummary = () => import("./tabs/Summary");
 const importTranscript = () => import("./tabs/Transcript");
 const Summary = dynamic(() => importSummary().then((m) => m.Summary));
 const Transcript = dynamic(() => importTranscript().then((m) => m.Transcript));
-const Settings = dynamic(() =>
-	import("./tabs/Settings").then((m) => m.Settings),
-);
 
 const prefetchTab = (tabId: string) => {
 	if (tabId === "summary") void importSummary();
 	else if (tabId === "transcript") void importTranscript();
 };
 
-type TabType = "activity" | "transcript" | "summary" | "settings";
-
-type CommentType = typeof commentsSchema.$inferSelect & {
-	authorName?: string | null;
-	authorImage?: ImageUpload.ImageUrl | null;
-};
+type TabType = "activity" | "transcript" | "summary";
 
 type AiGenerationStatus =
 	| "QUEUED"
@@ -239,8 +231,6 @@ export const Sidebar = forwardRef<{ scrollToBottom: () => void }, SidebarProps>(
 					);
 				case "transcript":
 					return <Transcript data={data} onSeek={onSeek} />;
-				case "settings":
-					return <Settings />;
 				default:
 					return null;
 			}

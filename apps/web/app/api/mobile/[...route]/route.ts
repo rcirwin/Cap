@@ -1980,7 +1980,9 @@ const getComments = Effect.fn("Mobile.getComments")(function* (
 				createdAt: Db.comments.createdAt,
 				updatedAt: Db.comments.updatedAt,
 				authorId: Db.comments.authorId,
-				authorName: Db.users.name,
+				authorName: sql<
+					string | null
+				>`COALESCE(${Db.users.name}, ${Db.comments.guestName})`,
 				authorImage: Db.users.image,
 				authorPreferences: Db.users.preferences,
 			})

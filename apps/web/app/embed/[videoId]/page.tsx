@@ -343,7 +343,10 @@ async function EmbedContent({
 			mediaKey: comments.mediaKey,
 			mediaDuration: comments.mediaDuration,
 			mediaMeta: comments.mediaMeta,
-			authorName: users.name,
+			guestName: comments.guestName,
+			authorName: sql<
+				string | null
+			>`COALESCE(${users.name}, ${comments.guestName})`,
 		})
 		.from(comments)
 		.leftJoin(users, eq(comments.authorId, users.id))

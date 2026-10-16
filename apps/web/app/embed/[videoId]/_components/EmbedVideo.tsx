@@ -1,7 +1,7 @@
 "use client";
 
 import type { userSelectProps } from "@cap/database/auth/session";
-import type { comments as commentsSchema, videos } from "@cap/database/schema";
+import type { videos } from "@cap/database/schema";
 import { NODE_ENV } from "@cap/env";
 import { Avatar, Logo } from "@cap/ui";
 import type { ViewerSettings } from "@cap/web-backend";
@@ -28,6 +28,7 @@ import {
 	parseVTT,
 	type TranscriptEntry,
 } from "@/app/s/[videoId]/_components/utils/transcript-utils";
+import type { CommentRow } from "@/lib/comment-row";
 import type { SharePageBranding } from "@/lib/share-branding";
 import type { ShareCallToAction } from "@/lib/share-call-to-action";
 import { usePlayerJsReceiver } from "./use-player-js-receiver";
@@ -46,7 +47,7 @@ const formatTime = (time: number) => {
 		.padStart(2, "0")}`;
 };
 
-type CommentWithAuthor = typeof commentsSchema.$inferSelect & {
+type CommentWithAuthor = CommentRow & {
 	authorName: string | null;
 };
 
