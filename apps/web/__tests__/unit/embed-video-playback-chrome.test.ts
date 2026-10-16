@@ -24,7 +24,11 @@ import {
 	type SharePageBrandingInput,
 } from "@/lib/share-branding";
 
-vi.mock("@cap/env", () => ({ NODE_ENV: "test" }));
+const envMocks = vi.hoisted(() => ({
+	buildEnv: { NEXT_PUBLIC_IS_CAP: "true" as string | undefined },
+}));
+
+vi.mock("@cap/env", () => ({ NODE_ENV: "test", buildEnv: envMocks.buildEnv }));
 
 vi.mock("@cap/ui", async () => {
 	const { createElement } = await import("react");
@@ -183,10 +187,30 @@ describe("EmbedVideo playback chrome", () => {
 
 	afterEach(() => {
 		document.body.replaceChildren();
+		envMocks.buildEnv.NEXT_PUBLIC_IS_CAP = "true";
 	});
 
 	afterAll(() => {
 		delete actEnvironment.IS_REACT_ACT_ENVIRONMENT;
+	});
+
+	it("leaves out the Powered by Cap link on self-hosted builds", async () => {
+		envMocks.buildEnv.NEXT_PUBLIC_IS_CAP = undefined;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+
+		await act(async () => {
+			root.render(
+				createElement(EmbedVideo, createProps({ type: "desktopMP4" })),
+			);
+		});
+		expect(container.textContent).toContain("Test video");
+		expect(container.querySelector('[aria-label="Powered by Cap"]')).toBeNull();
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 
 	it.each(
