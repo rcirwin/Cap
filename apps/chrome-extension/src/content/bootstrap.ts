@@ -2,6 +2,7 @@ import {
 	isOverlayMessage,
 	isRecordingStatusBroadcast,
 } from "../shared/messages";
+import { PRODUCTION_API_HOSTNAME } from "../shared/server-url";
 import {
 	RECORDING_STATE_KEY,
 	SHARED_UI_STATE_KEY,
@@ -38,6 +39,7 @@ const isCapWebOrigin = () => {
 	return (
 		hostname === "cap.so" ||
 		hostname.endsWith(".cap.so") ||
+		hostname === PRODUCTION_API_HOSTNAME ||
 		hostname === "localhost" ||
 		hostname === "127.0.0.1" ||
 		hostname === "::1"

@@ -29,6 +29,16 @@ function createServerEnv() {
 			// Cap uses Resend for email sending, including sending login code emails
 			RESEND_API_KEY: z.string().optional(),
 			RESEND_FROM_DOMAIN: z.string().optional(),
+			SMTP_URL: z
+				.string()
+				.optional()
+				.describe(
+					"SMTP connection URL (e.g. smtps://user:pass@smtp.gmail.com:465), used when RESEND_API_KEY is unset",
+				),
+			EMAIL_FROM: z
+				.string()
+				.optional()
+				.describe('From address for SMTP email, e.g. "Cap <me@example.com>"'),
 
 			/// S3 configuration
 			// Though they are prefixed with `CAP_AWS`, these don't have to be
@@ -76,6 +86,9 @@ function createServerEnv() {
 			WORKOS_API_KEY: z.string().optional(),
 
 			/// Settings
+			CAP_GUEST_COMMENTS: boolString(false).describe(
+				"Let signed-out viewers comment and react with just a display name",
+			),
 			CAP_VIDEOS_DEFAULT_PUBLIC: boolString(true).describe(
 				"Should videos be public or private by default",
 			),
@@ -86,7 +99,9 @@ function createServerEnv() {
 			CAP_ALLOWED_SIGNUP_DOMAINS: z
 				.string()
 				.optional()
-				.describe("Comma-separated list of permitted signup domains"),
+				.describe(
+					"Comma-separated list of permitted signup domains or full email addresses",
+				),
 			CAP_BLOCKED_SIGNUP_DOMAINS: z
 				.string()
 				.optional()
@@ -98,7 +113,36 @@ function createServerEnv() {
 			ASSEMBLY_API_KEY: z.string().optional().describe("Audio transcription"),
 			ANTHROPIC_API_KEY: z.string().optional().describe("AI chat"),
 			OPENAI_API_KEY: z.string().optional().describe("AI summaries"),
-			GROQ_API_KEY: z.string().optional().describe("AI summaries"),
+			GROQ_API_KEY: z
+				.string()
+				.optional()
+				.describe(
+					"AI summaries, and Whisper transcription via Groq when ASSEMBLY_API_KEY is not set",
+				),
+			TRANSCRIPTION_PROVIDER: z
+				.union([z.literal("assemblyai"), z.literal("openai-compatible")])
+				.optional()
+				.describe(
+					"Audio transcription provider. When unset, 'assemblyai' is used if ASSEMBLY_API_KEY is set, otherwise 'openai-compatible' if TRANSCRIPTION_BASE_URL, TRANSCRIPTION_API_KEY or GROQ_API_KEY is set.",
+				),
+			TRANSCRIPTION_BASE_URL: z
+				.string()
+				.optional()
+				.describe(
+					"Base URL of an OpenAI-compatible Whisper endpoint (POST {base}/audio/transcriptions). Defaults to Groq (https://api.groq.com/openai/v1).",
+				),
+			TRANSCRIPTION_API_KEY: z
+				.string()
+				.optional()
+				.describe(
+					"API key for the 'openai-compatible' transcription provider. Falls back to GROQ_API_KEY when the base URL is Groq; may be omitted for local servers.",
+				),
+			TRANSCRIPTION_MODEL: z
+				.string()
+				.optional()
+				.describe(
+					"Whisper model for the 'openai-compatible' transcription provider (default whisper-large-v3-turbo; use whisper-1 for OpenAI).",
+				),
 			AI_PROVIDER: z
 				.union([
 					z.literal("assemblyai"),

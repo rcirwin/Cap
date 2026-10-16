@@ -209,7 +209,13 @@ const createOffscreenDocument = () =>
 		chrome.offscreen.createDocument(
 			{
 				url: OFFSCREEN_URL,
-				reasons: ["USER_MEDIA", "DISPLAY_MEDIA", "BLOBS", "AUDIO_PLAYBACK"],
+				reasons: [
+					"USER_MEDIA",
+					"DISPLAY_MEDIA",
+					"BLOBS",
+					"AUDIO_PLAYBACK",
+					"CLIPBOARD",
+				],
 				justification: "Record and upload Cap videos from an extension page.",
 			},
 			() => {
@@ -962,9 +968,10 @@ const refreshMediaDevicesFromOffscreen = async () => {
 	}
 };
 
-const getUploadProgressUrl = (videoId: string) => {
+const getUploadProgressUrl = (videoId: string, linkCopied: boolean) => {
 	const url = new URL(chrome.runtime.getURL("uploading.html"));
 	url.searchParams.set("videoId", videoId);
+	if (linkCopied) url.searchParams.set("copied", "1");
 	return url.toString();
 };
 
@@ -997,7 +1004,7 @@ const openRecordingDestinationInner = async (status: RecordingStatus) => {
 
 	if (status.phase !== "uploading" || !status.videoId) return;
 
-	const url = getUploadProgressUrl(status.videoId);
+	const url = getUploadProgressUrl(status.videoId, status.linkCopied === true);
 	const existingTabId = await getUploadProgressTabId();
 	if (existingTabId !== null) {
 		const updated = await updateTab(existingTabId, url).then(

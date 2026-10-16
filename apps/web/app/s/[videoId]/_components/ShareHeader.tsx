@@ -54,6 +54,7 @@ import type { Spaces } from "@/app/(org)/dashboard/dashboard-data";
 import { useCurrentUser } from "@/app/Layout/AuthContext";
 import { SignedImageUrl } from "@/components/SignedImageUrl";
 import { Tooltip } from "@/components/Tooltip";
+import { capHomeHref, showCapMarketing } from "@/lib/cap-marketing";
 import type { ShareDashboardDestination } from "@/lib/share-dashboard-destination";
 import {
 	copyRichVideoLink,
@@ -729,24 +730,28 @@ export const ShareHeader = ({
 	 * the branding has bought the right not to be advertised at.
 	 */
 	const renderSignedOutNav = () => {
-		if (user !== null || branding?.type !== "cap") return null;
+		if (user !== null) return null;
+		const showMarketing = showCapMarketing();
+		if (showMarketing && branding?.type !== "cap") return null;
 
 		return (
 			<nav
 				aria-label="Cap"
 				className="flex shrink-0 flex-wrap items-center justify-end gap-x-5 gap-y-2"
 			>
-				<div className="hidden items-center gap-5 md:flex">
-					{SIGNED_OUT_LINKS.map((link) => (
-						<a
-							key={link.href}
-							href={`${link.href}?ref=video_${data.id}`}
-							className="text-[13px] text-gray-10 transition-colors hover:text-gray-12"
-						>
-							{link.label}
-						</a>
-					))}
-				</div>
+				{showMarketing && (
+					<div className="hidden items-center gap-5 md:flex">
+						{SIGNED_OUT_LINKS.map((link) => (
+							<a
+								key={link.href}
+								href={`${link.href}?ref=video_${data.id}`}
+								className="text-[13px] text-gray-10 transition-colors hover:text-gray-12"
+							>
+								{link.label}
+							</a>
+						))}
+					</div>
+				)}
 				<div className="flex items-center gap-3">
 					<a
 						href="/login"
@@ -754,14 +759,16 @@ export const ShareHeader = ({
 					>
 						Log in
 					</a>
-					<Button
-						variant="dark"
-						size="xs"
-						href={`/signup?ref=video_${data.id}`}
-						className="h-8 rounded-full px-3 text-xs"
-					>
-						Get Cap free
-					</Button>
+					{showMarketing && (
+						<Button
+							variant="dark"
+							size="xs"
+							href={`/signup?ref=video_${data.id}`}
+							className="h-8 rounded-full px-3 text-xs"
+						>
+							Get Cap free
+						</Button>
+					)}
 				</div>
 			</nav>
 		);
@@ -817,7 +824,7 @@ export const ShareHeader = ({
 					<a
 						target="_blank"
 						rel="noreferrer"
-						href={`/?ref=video_${data.id}`}
+						href={capHomeHref(`video_${data.id}`)}
 						className="inline-flex h-11 items-center"
 					>
 						<Logo className="h-7 w-auto" />

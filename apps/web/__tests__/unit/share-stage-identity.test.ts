@@ -77,8 +77,17 @@ vi.mock("@/actions/videos/get-status", () => ({
 	getVideoStatus: async () => ({}),
 }));
 
+vi.mock("@/actions/videos/new-guest-comment", () => ({
+	newGuestComment: async () => ({ success: false, error: "unused" }),
+}));
+
 vi.mock("@/app/(org)/dashboard/_components/Navbar/server", () => ({
 	updateActiveOrganization: vi.fn(),
+}));
+
+vi.mock("@/lib/cap-marketing", () => ({
+	showCapMarketing: () => true,
+	capHomeHref: (ref: string) => `/?ref=${ref}`,
 }));
 
 vi.mock("@/app/s/[videoId]/_components/CaptionContext", () => ({

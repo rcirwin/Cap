@@ -1,4 +1,3 @@
-import type { comments as commentsSchema } from "@cap/database/schema";
 import { NODE_ENV } from "@cap/env";
 import { Logo } from "@cap/ui";
 import type { ImageUpload } from "@cap/web-domain";
@@ -20,6 +19,7 @@ import {
 } from "react";
 import { finalizeDesktopSegmentsRecording } from "@/actions/video/finalize-desktop-segments";
 import { Tooltip } from "@/components/Tooltip";
+import type { CommentRow } from "@/lib/comment-row";
 import { isRetryableDesktopSegmentsFinalizationError } from "@/lib/desktop-segments-retryable-errors";
 import type { ShareCallToAction } from "@/lib/share-call-to-action";
 import type { VideoData } from "../types";
@@ -36,7 +36,7 @@ import {
 } from "./upload-progress";
 import { formatChaptersAsVTT } from "./utils/transcript-utils";
 
-type CommentWithAuthor = typeof commentsSchema.$inferSelect & {
+type CommentWithAuthor = CommentRow & {
 	authorName: string | null;
 	authorImage: ImageUpload.ImageUrl | null;
 };

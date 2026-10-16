@@ -1,0 +1,8 @@
+{$CAP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy cap-web:3000
+}
+
+{$CAP_S3_DOMAIN} {
+	reverse_proxy minio:9000
+}

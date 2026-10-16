@@ -1,6 +1,10 @@
 import { db } from "@cap/database";
 import { comments, spaceVideos, videos } from "@cap/database/schema";
-import { Tinybird } from "@cap/web-backend";
+import {
+	emptyOrgViewAnalytics,
+	Tinybird,
+	ViewAnalytics,
+} from "@cap/web-backend";
 import { and, between, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm/sql";
 import { Effect } from "effect";
@@ -232,9 +236,28 @@ export const getOrgAnalyticsData = async (
 		queryCommentsSeries(typedOrgId, from, to, "emoji", bucket, videoIds),
 	]);
 
-	const tinybirdData = await runPromise(
+	const tinybirdData: TinybirdAnalyticsData = await runPromise(
 		Effect.gen(function* () {
 			const tinybird = yield* Tinybird;
+
+			if (!tinybird.enabled) {
+				const viewAnalytics = yield* ViewAnalytics;
+				return yield* viewAnalytics
+					.orgAnalytics({
+						orgId: typedOrgId,
+						from,
+						to,
+						bucket,
+						videoIds,
+						includeTopCaps: !capId,
+					})
+					.pipe(
+						Effect.catchAll((error) => {
+							console.error("mysql view analytics error", error);
+							return Effect.succeed(emptyOrgViewAnalytics());
+						}),
+					);
+			}
 
 			const viewSeries = yield* queryViewSeries(
 				tinybird,

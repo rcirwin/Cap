@@ -46,7 +46,9 @@ const errorActions = byId<HTMLElement>("error-actions");
 const retryButton = byId<HTMLButtonElement>("retry-upload");
 const downloadButton = byId<HTMLButtonElement>("download-recording");
 
-const urlVideoId = new URL(window.location.href).searchParams.get("videoId");
+const pageParams = new URL(window.location.href).searchParams;
+const urlVideoId = pageParams.get("videoId");
+const linkCopied = pageParams.get("copied") === "1";
 
 let mode: StageMode = "waiting";
 let redirecting = false;
@@ -213,7 +215,9 @@ const renderActiveStatus = (status: ActiveStatus) => {
 	applyStageState(
 		"uploading",
 		"Uploading your Cap",
-		"We'll take you to it the moment it's ready.",
+		linkCopied
+			? "Share link copied to your clipboard. We'll take you to it the moment it's ready."
+			: "We'll take you to it the moment it's ready.",
 	);
 };
 

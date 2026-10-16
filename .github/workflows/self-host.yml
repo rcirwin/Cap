@@ -1,0 +1,196 @@
+name: "Self-host build"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - self-host
+    paths:
+      - "apps/web/**"
+      - "apps/media-server/**"
+      - "apps/chrome-extension/**"
+      - "packages/**"
+      - "self-host/**"
+      - "bun.lock"
+      - "package.json"
+      - ".github/workflows/self-host.yml"
+
+concurrency:
+  group: self-host-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_TAG: self-host
+
+jobs:
+  check:
+    name: Typecheck & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-js
+
+      - run: bun run --cwd apps/web next typegen
+
+      - name: Typecheck workspace
+        run: bun run typecheck
+
+      - name: Web unit tests
+        run: >-
+          bun run --cwd apps/web test
+          __tests__/unit/signup-allowlist.test.ts
+          __tests__/unit/transcription-provider.test.ts
+          __tests__/unit/transcription-audio-prep.test.ts
+
+      - name: Chrome extension tests
+        run: bun run --cwd apps/chrome-extension test
+
+      - name: Shellcheck deployment scripts
+        run: shellcheck self-host/*.sh
+
+      - name: Validate compose file
+        working-directory: self-host
+        run: |
+          cat > .env <<'EOF'
+          CAP_DOMAIN=example.duckdns.org
+          CAP_S3_DOMAIN=s3.example.duckdns.org
+          CAP_ALLOWED_SIGNUP_DOMAINS=owner@example.com
+          CAP_CHROME_EXTENSION_ID=fonfkofcnfolpcfekellfjedolghophf
+          MINIO_ROOT_USER=capadmin
+          MINIO_ROOT_PASSWORD=x
+          MYSQL_PASSWORD=x
+          MYSQL_ROOT_PASSWORD=x
+          DATABASE_ENCRYPTION_KEY=x
+          NEXTAUTH_SECRET=x
+          MEDIA_SERVER_WEBHOOK_SECRET=x
+          CRON_SECRET=x
+          EOF
+          docker compose config --quiet
+
+  extension:
+    name: Chrome extension bundle
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-js
+
+      - name: Build
+        working-directory: apps/chrome-extension
+        env:
+          VITE_CAP_API_BASE_URL: ${{ vars.CAP_SERVER_URL }}
+          CAP_EXTENSION_MANIFEST_KEY: ${{ vars.CAP_EXTENSION_MANIFEST_KEY }}
+        run: bun run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cap-chrome-extension
+          path: apps/chrome-extension/dist
+          if-no-files-found: error
+
+  image:
+    name: Image ${{ matrix.image }} (${{ matrix.platform }})
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [cap-web, cap-media-server]
+        platform: [amd64, arm64]
+        include:
+          - platform: amd64
+            runner: ubuntu-24.04
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+          - image: cap-web
+            context: .
+            dockerfile: apps/web/Dockerfile
+          - image: cap-media-server
+            context: apps/media-server
+            dockerfile: apps/media-server/Dockerfile.standalone
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Create .env file
+        if: matrix.image == 'cap-web'
+        run: |
+          echo "WEB_URL=http://localhost:3000" > .env
+          echo "NEXT_PUBLIC_DOCKER_BUILD=true" >> .env
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Downcase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER@L}" >> "$GITHUB_ENV"
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.platform }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          outputs: type=image,name=ghcr.io/${{ env.OWNER }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.platform }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Publish ${{ matrix.image }}:self-host
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [cap-web, cap-media-server]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Downcase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER@L}" >> "$GITHUB_ENV"
+
+      - name: Create multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          image="ghcr.io/${OWNER}/${{ matrix.image }}"
+          docker buildx imagetools create \
+            -t "${image}:${IMAGE_TAG}" \
+            -t "${image}:sha-${GITHUB_SHA::7}" \
+            $(printf "${image}@sha256:%s " *)

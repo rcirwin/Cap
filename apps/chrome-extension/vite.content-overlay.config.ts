@@ -8,6 +8,7 @@ import { defineConfig } from "vite";
 // manifest's web_accessible_resources entry can list it.
 export default defineConfig({
 	plugins: [react()],
+	publicDir: false,
 	build: {
 		emptyOutDir: false,
 		outDir: "dist",

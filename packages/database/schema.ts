@@ -606,6 +606,10 @@ export const comments = mysqlTable(
 		mediaKey: varchar("mediaKey", { length: 512 }),
 		mediaDuration: float("mediaDuration"),
 		mediaMeta: json("mediaMeta").$type<Comment.MediaMeta>(),
+		// Guest (signed-out) comments keep authorId NOT NULL by storing a
+		// server-issued guest id there; guestName marks the row as a guest's.
+		guestName: varchar("guestName", { length: 64 }),
+		guestIpHash: varchar("guestIpHash", { length: 64 }),
 	},
 	(table) => ({
 		videoTypeCreatedIndex: index("video_type_created_idx").on(
@@ -617,6 +621,43 @@ export const comments = mysqlTable(
 		authorIdIndex: index("author_id_idx").on(table.authorId),
 		parentCommentIdIndex: index("parent_comment_id_idx").on(
 			table.parentCommentId,
+		),
+		videoGuestCreatedIndex: index("video_guest_created_idx").on(
+			table.videoId,
+			table.guestIpHash,
+			table.createdAt,
+		),
+	}),
+);
+
+// View events for instances without Tinybird: one row per video and viewer
+// session, so COUNT(*) matches Tinybird's uniq(session_id).
+export const videoViews = mysqlTable(
+	"video_views",
+	{
+		id: nanoId("id").notNull().primaryKey(),
+		videoId: nanoId("videoId").notNull().$type<Video.VideoId>(),
+		orgId: nanoId("orgId").notNull().$type<Organisation.OrganisationId>(),
+		sessionId: varchar("sessionId", { length: 128 }).notNull(),
+		viewerUserId: nanoIdNullable("viewerUserId").$type<User.UserId>(),
+		viewerName: varchar("viewerName", { length: 64 }),
+		country: varchar("country", { length: 8 }).notNull().default(""),
+		region: varchar("region", { length: 64 }).notNull().default(""),
+		city: varchar("city", { length: 128 }).notNull().default(""),
+		browser: varchar("browser", { length: 64 }).notNull().default(""),
+		os: varchar("os", { length: 64 }).notNull().default(""),
+		device: varchar("device", { length: 32 }).notNull().default(""),
+		createdAt: timestamp("createdAt").notNull().defaultNow(),
+	},
+	(table) => ({
+		videoSessionUnique: uniqueIndex("video_session_idx").on(
+			table.videoId,
+			table.sessionId,
+		),
+		orgCreatedIndex: index("org_created_idx").on(table.orgId, table.createdAt),
+		videoCreatedIndex: index("video_created_idx").on(
+			table.videoId,
+			table.createdAt,
 		),
 	}),
 );

@@ -15,6 +15,15 @@ export function isEmailAllowedForSignup(
 		return false;
 	}
 
+	const normalizedEmail = email.trim().toLowerCase();
+	const allowedEmails = allowedDomainsConfig
+		.split(",")
+		.map((entry) => entry.trim().toLowerCase())
+		.filter((entry) => entry.includes("@"));
+	if (allowedEmails.includes(normalizedEmail)) {
+		return true;
+	}
+
 	const allowedDomains = parseAllowedDomains(allowedDomainsConfig);
 	return allowedDomains.includes(emailDomain.toLowerCase());
 }

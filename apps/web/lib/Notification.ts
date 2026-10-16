@@ -10,6 +10,7 @@ import { Comment, User, Video } from "@cap/web-domain";
 import { and, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { UserPreferences } from "@/app/(org)/dashboard/dashboard-data";
 import { getSessionHash } from "@/lib/anonymous-names";
+import { isGuestId } from "@/lib/guest-comments";
 
 export type NotificationType = Notification["type"];
 
@@ -32,6 +33,7 @@ type CreateNotificationInput<D = AuthoredNotificationData> =
 	D extends AuthoredNotificationData
 		? Omit<D, "author"> & { authorId: string } & {
 				parentCommentId?: Comment.CommentId;
+				guestName?: string;
 			}
 		: never;
 
@@ -99,7 +101,11 @@ export async function createNotification(
 			preferences: ownerResult.preferences,
 		};
 
-		const { type, ...data } = notification;
+		const { type, guestName, ...authoredData } = notification;
+		const data = guestName
+			? { ...authoredData, anonName: guestName }
+			: authoredData;
+		const authorIsGuest = isGuestId(notification.authorId);
 
 		if (type === "reply" && notification.parentCommentId) {
 			const [parentComment] = await db()
@@ -109,8 +115,10 @@ export async function createNotification(
 				.limit(1);
 
 			const recipientId = parentComment?.authorId;
-			if (!recipientId) return;
-			if (recipientId === videoResult.ownerId) return;
+			if (!recipientId || isGuestId(recipientId)) return;
+			// Guests can't be notified any other way, so a guest replying to the
+			// owner's comment is the one reply the owner still hears about.
+			if (recipientId === videoResult.ownerId && !authorIsGuest) return;
 
 			const [recipientUser] = await db()
 				.select({
@@ -236,6 +244,7 @@ export async function createNotification(
 				videoId: notification.videoId,
 				recipientId: videoResult.ownerId,
 				authorId: notification.authorId,
+				authorName: guestName,
 				comment: notification.comment,
 			});
 		}
@@ -251,6 +260,7 @@ async function sendNewCommentEmail(params: {
 	videoId: string;
 	recipientId: string;
 	authorId: string;
+	authorName?: string;
 	comment: { id: string; content: string };
 }) {
 	try {
@@ -301,13 +311,15 @@ async function sendNewCommentEmail(params: {
 
 		const videoName = video?.name || "Untitled Video";
 
-		const [commenter] = await database
-			.select({ name: users.name })
-			.from(users)
-			.where(eq(users.id, User.UserId.make(params.authorId)))
-			.limit(1);
-
-		const commenterName = commenter?.name || "Someone";
+		const commenterName =
+			params.authorName ||
+			(await database
+				.select({ name: users.name })
+				.from(users)
+				.where(eq(users.id, User.UserId.make(params.authorId)))
+				.limit(1)
+				.then(([commenter]) => commenter?.name)) ||
+			"Someone";
 
 		const videoUrl = `${serverEnv().WEB_URL}/s/${params.videoId}`;
 
@@ -333,11 +345,13 @@ export async function createAnonymousViewNotification({
 	sessionId,
 	anonName,
 	location,
+	isGuestName = false,
 }: {
 	videoId: string;
 	sessionId: string;
 	anonName: string;
 	location: string | null;
+	isGuestName?: boolean;
 }) {
 	const sessionHash = getSessionHash(sessionId);
 	const dedupKey = `anon_view:${videoId}:${sessionHash}`;
@@ -347,12 +361,20 @@ export async function createAnonymousViewNotification({
 		const database = db();
 
 		const [existingNotification] = await database
-			.select({ id: notifications.id })
+			.select({ id: notifications.id, data: notifications.data })
 			.from(notifications)
 			.where(eq(notifications.dedupKey, dedupKey))
 			.limit(1);
 
-		if (existingNotification) return;
+		if (existingNotification) {
+			if (isGuestName && existingNotification.data.anonName !== anonName) {
+				await database
+					.update(notifications)
+					.set({ data: { ...existingNotification.data, anonName } })
+					.where(eq(notifications.id, existingNotification.id));
+			}
+			return;
+		}
 
 		const [videoWithOwner] = await database
 			.select({

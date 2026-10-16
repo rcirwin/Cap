@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { authOptions } from "@cap/database/auth/auth-options";
 import { isEmailAllowedForSignup } from "@cap/database/auth/domain-utils";
 import { hashPassword } from "@cap/database/crypto";
-import { sendEmail } from "@cap/database/emails/config";
+import { isEmailConfigured, sendEmail } from "@cap/database/emails/config";
 import { OTPEmail } from "@cap/database/emails/otp-email";
 import { nanoId } from "@cap/database/helpers";
 import * as Db from "@cap/database/schema";
@@ -154,9 +154,11 @@ const hashEmailCode = (code: string) =>
 		.digest("hex");
 
 const sendMobileEmailCode = async (email: string, code: string) => {
-	if (!serverEnv().RESEND_API_KEY) {
+	if (!isEmailConfigured()) {
 		if (process.env.NODE_ENV === "production") {
-			throw new Error("RESEND_API_KEY is required to send mobile email codes");
+			throw new Error(
+				"An email provider (RESEND_API_KEY or SMTP_URL) is required to send mobile email codes",
+			);
 		}
 		console.log("");
 		console.log("Cap mobile verification code");
@@ -1978,7 +1980,9 @@ const getComments = Effect.fn("Mobile.getComments")(function* (
 				createdAt: Db.comments.createdAt,
 				updatedAt: Db.comments.updatedAt,
 				authorId: Db.comments.authorId,
-				authorName: Db.users.name,
+				authorName: sql<
+					string | null
+				>`COALESCE(${Db.users.name}, ${Db.comments.guestName})`,
 				authorImage: Db.users.image,
 				authorPreferences: Db.users.preferences,
 			})

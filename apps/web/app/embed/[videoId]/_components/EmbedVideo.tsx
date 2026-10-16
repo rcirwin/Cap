@@ -1,7 +1,7 @@
 "use client";
 
 import type { userSelectProps } from "@cap/database/auth/session";
-import type { comments as commentsSchema, videos } from "@cap/database/schema";
+import type { videos } from "@cap/database/schema";
 import { NODE_ENV } from "@cap/env";
 import { Avatar, Logo } from "@cap/ui";
 import type { ViewerSettings } from "@cap/web-backend";
@@ -28,8 +28,11 @@ import {
 	parseVTT,
 	type TranscriptEntry,
 } from "@/app/s/[videoId]/_components/utils/transcript-utils";
+import { showCapMarketing } from "@/lib/cap-marketing";
+import type { CommentRow } from "@/lib/comment-row";
 import type { SharePageBranding } from "@/lib/share-branding";
 import type { ShareCallToAction } from "@/lib/share-call-to-action";
+import { trackVideoView } from "@/lib/video-view-tracking";
 import { usePlayerJsReceiver } from "./use-player-js-receiver";
 
 declare global {
@@ -46,7 +49,7 @@ const formatTime = (time: number) => {
 		.padStart(2, "0")}`;
 };
 
-type CommentWithAuthor = typeof commentsSchema.$inferSelect & {
+type CommentWithAuthor = CommentRow & {
 	authorName: string | null;
 };
 
@@ -76,7 +79,7 @@ export const EmbedVideo = forwardRef<
 		{
 			data,
 			branding,
-			user: _user,
+			user,
 			comments: _comments,
 			chapters = [],
 			ownerName,
@@ -102,6 +105,7 @@ export const EmbedVideo = forwardRef<
 			data.duration ?? 0,
 		);
 		const [isPlaying, setIsPlaying] = useState(false);
+		const viewTrackedRef = useRef(false);
 		const [userConfirmedStopped, setUserConfirmedStopped] = useState(false);
 		const segmentUploadProgress = useUploadProgress(
 			data.id,
@@ -257,7 +261,17 @@ export const EmbedVideo = forwardRef<
 				<div
 					ref={playerContainerRef}
 					className="relative w-screen h-screen rounded-xl"
-					onPlayCapture={() => setIsPlaying(true)}
+					onPlayCapture={() => {
+						setIsPlaying(true);
+						if (viewTrackedRef.current || user?.id === data.ownerId) return;
+						viewTrackedRef.current = true;
+						trackVideoView({
+							videoId: data.id,
+							orgId: data.orgId,
+							ownerId: data.ownerId,
+							pathname: `/s/${data.id}`,
+						});
+					}}
 					onPauseCapture={() => setIsPlaying(false)}
 					onEndedCapture={() => setIsPlaying(false)}
 				>
@@ -372,7 +386,7 @@ export const EmbedVideo = forwardRef<
 											className="h-8 w-auto max-w-40 object-contain"
 										/>
 									</motion.div>
-								) : branding?.type === "cap" ? (
+								) : branding?.type === "cap" && showCapMarketing() ? (
 									<motion.button
 										initial={{ opacity: 0, y: 10 }}
 										animate={{ opacity: 1, y: 0 }}

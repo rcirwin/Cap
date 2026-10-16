@@ -30,6 +30,9 @@ const CommentComponent: React.FC<{
 	) => void;
 	level?: number;
 	onSeek?: (time: number) => void;
+	canReply: boolean;
+	canModerate: boolean;
+	guestId: string | null;
 }> = ({
 	comment,
 	replies,
@@ -40,10 +43,15 @@ const CommentComponent: React.FC<{
 	onDelete,
 	level = 0,
 	onSeek,
+	canReply,
+	canModerate,
+	guestId,
 }) => {
 	const user = useCurrentUser();
 	const isReplying = replyingToId === comment.id;
-	const isOwnComment = user?.id === comment.authorId;
+	const isOwnComment =
+		(user !== null && user.id === comment.authorId) ||
+		(guestId !== null && guestId === comment.authorId);
 	const commentParams = useSearchParams().get("comment");
 	const replyParams = useSearchParams().get("reply");
 	const nestedReplies =
@@ -63,7 +71,6 @@ const CommentComponent: React.FC<{
 		}
 	};
 
-	const canReply = true;
 	const commentDate = new Date(comment.createdAt);
 
 	return (
@@ -112,9 +119,16 @@ const CommentComponent: React.FC<{
 					className={"flex-1 p-3 rounded-xl border border-gray-3 bg-gray-2"}
 				>
 					<div className="flex gap-3 justify-between items-center">
-						<p className="text-sm font-medium truncate text-gray-12">
-							{comment.authorName || "Anonymous"}
-						</p>
+						<div className="flex gap-1.5 items-center min-w-0">
+							<p className="text-sm font-medium truncate text-gray-12">
+								{comment.authorName || "Anonymous"}
+							</p>
+							{comment.guestName && (
+								<span className="shrink-0 rounded-full bg-gray-3 px-1.5 text-[10px] font-medium leading-4 text-gray-10 ring-1 ring-gray-4">
+									Guest
+								</span>
+							)}
+						</div>
 						<div className="flex gap-2 items-center text-nowrap min-w-fit">
 							<Tooltip content={formatTimestamp(commentDate)}>
 								<p className="text-xs text-gray-8">
@@ -151,7 +165,7 @@ const CommentComponent: React.FC<{
 						</p>
 					)}
 					<div className="flex items-center pt-2 mt-2.5 space-x-3 border-t border-gray-3">
-						{user && !isReplying && canReply && (
+						{!isReplying && canReply && (
 							<Tooltip content="Reply">
 								<Button
 									onClick={() => onReply(comment.id)}
@@ -164,7 +178,7 @@ const CommentComponent: React.FC<{
 								/>
 							</Tooltip>
 						)}
-						{isOwnComment && (
+						{(isOwnComment || canModerate) && (
 							<Tooltip content="Delete comment">
 								<Button
 									onClick={handleDelete}
@@ -207,6 +221,9 @@ const CommentComponent: React.FC<{
 							onDelete={onDelete}
 							level={1}
 							onSeek={onSeek}
+							canReply={canReply}
+							canModerate={canModerate}
+							guestId={guestId}
 						/>
 					))}
 				</div>

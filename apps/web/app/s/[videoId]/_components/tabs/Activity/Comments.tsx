@@ -20,6 +20,7 @@ import { deleteComment } from "@/actions/videos/delete-comment";
 import { newComment } from "@/actions/videos/new-comment";
 import { useCurrentUser } from "@/app/Layout/AuthContext";
 import type { CommentType } from "../../../Share";
+import { useGuestComments } from "../../guest/GuestComments";
 import { ActivityComposer } from "./ActivityComposer";
 import CommentComponent from "./Comment";
 import EmptyState from "./EmptyState";
@@ -38,6 +39,7 @@ export const Comments = Object.assign(
 			commentsDisabled: boolean;
 			ownerName?: string | null;
 			canRecordMedia?: boolean;
+			canModerate?: boolean;
 		}
 	>((props, ref) => {
 		const {
@@ -51,6 +53,9 @@ export const Comments = Object.assign(
 		const commentParams = useSearchParams().get("comment");
 		const replyParams = useSearchParams().get("reply");
 		const user = useCurrentUser();
+		const guestComments = useGuestComments();
+		const guest = user ? null : guestComments;
+		const guestCanComment = Boolean(guest?.canComment);
 
 		const [replyingTo, setReplyingTo] = useState<Comment.CommentId | null>(
 			null,
@@ -82,11 +87,29 @@ export const Comments = Object.assign(
 		);
 
 		const handleNewComment = async (content: string) => {
-			if (!user) return;
-
-			// Get current video time from the video element
 			const videoElement = document.querySelector("video") as HTMLVideoElement;
 			const currentTime = videoElement?.currentTime || 0;
+
+			if (!user) {
+				if (!guest || !guestCanComment) return;
+				await guest.postComment(
+					{
+						videoId: props.videoId,
+						type: "text",
+						content: content.trim(),
+						parentCommentId: "" as Comment.CommentId,
+						timestamp: currentTime,
+					},
+					{
+						onOptimistic: (optimistic) =>
+							startTransition(() => {
+								setOptimisticComments(optimistic);
+							}),
+						onSuccess: handleCommentSuccess,
+					},
+				);
+				return;
+			}
 
 			const optimisticComment: CommentType = {
 				id: `temp-${Date.now()}` as Comment.CommentId,
@@ -125,8 +148,15 @@ export const Comments = Object.assign(
 			}
 		};
 
+		const scrollToComment = (commentId: Comment.CommentId) => {
+			document.getElementById(`comment-${commentId}`)?.scrollIntoView({
+				behavior: "smooth",
+				block: "center",
+			});
+		};
+
 		const handleReply = async (content: string) => {
-			if (!replyingTo || !user) return;
+			if (!replyingTo) return;
 
 			const videoElement = document.querySelector("video") as HTMLVideoElement;
 			const currentTime = videoElement?.currentTime || 0;
@@ -135,6 +165,31 @@ export const Comments = Object.assign(
 			const actualParentId = parentComment?.parentCommentId
 				? parentComment.parentCommentId
 				: replyingTo;
+
+			if (!user) {
+				if (!guest || !guestCanComment) return;
+				const saved = await guest.postComment(
+					{
+						videoId: props.videoId,
+						type: "text",
+						content: content.trim(),
+						parentCommentId: actualParentId,
+						timestamp: currentTime,
+					},
+					{
+						onOptimistic: (optimistic) =>
+							startTransition(() => {
+								setOptimisticComments(optimistic);
+							}),
+						onSuccess: handleCommentSuccess,
+					},
+				);
+				if (saved) {
+					scrollToComment(saved.id);
+					setReplyingTo(null);
+				}
+				return;
+			}
 
 			const optimisticReply: CommentType = {
 				id: `temp-reply-${Date.now()}` as Comment.CommentId,
@@ -169,14 +224,7 @@ export const Comments = Object.assign(
 				});
 
 				handleCommentSuccess(data);
-
-				const newReplyElement = document.getElementById(`comment-${data.id}`);
-				if (newReplyElement) {
-					newReplyElement.scrollIntoView({
-						behavior: "smooth",
-						block: "center",
-					});
-				}
+				scrollToComment(data.id);
 				setReplyingTo(null);
 			} catch (error) {
 				console.error("Error posting reply:", error);
@@ -239,13 +287,18 @@ export const Comments = Object.assign(
 								key={comment.clientKey ?? comment.id}
 								comment={comment}
 								replies={optimisticComments}
-								onReply={(id) => {
-									if (!user) {
-										props.setShowAuthOverlay(true);
-									} else {
+								onReply={async (id) => {
+									if (user) {
 										setReplyingTo(id);
+									} else if (guest && guestCanComment) {
+										if (await guest.ensureName()) setReplyingTo(id);
+									} else {
+										props.setShowAuthOverlay(true);
 									}
 								}}
+								canReply={Boolean(user) || guestCanComment}
+								canModerate={props.canModerate ?? false}
+								guestId={guest?.guestId ?? null}
 								replyingToId={replyingTo}
 								handleReply={handleReply}
 								onCancelReply={handleCancelReply}

@@ -65,6 +65,7 @@ import {
 	toSessionDescriptionInit,
 	waitForIceGatheringComplete,
 } from "../shared/webrtc";
+import { copyTextToClipboard } from "./clipboard";
 import { captureDisplayStream } from "./display-capture";
 
 const RECORDING_TIMESLICE_MS = 1000;
@@ -104,6 +105,7 @@ type ActiveRecording = {
 	lastResumedAt: number | null;
 	videoId: VideoId;
 	shareUrl: string;
+	linkCopied?: boolean;
 	width: number;
 	height: number;
 	fps: number;
@@ -1363,6 +1365,9 @@ async function stopRecording() {
 	}
 
 	if (status.phase !== "error") {
+		if (recording.linkCopied === undefined) {
+			recording.linkCopied = copyTextToClipboard(recording.shareUrl);
+		}
 		const snapshot = getCurrentUploadSnapshot();
 		status = {
 			phase: "uploading",
@@ -1372,6 +1377,7 @@ async function stopRecording() {
 			updatedAt: now,
 			upload: snapshot.upload,
 			uploadStatus: snapshot.uploadStatus,
+			linkCopied: recording.linkCopied,
 		};
 		broadcastStatus();
 		void loadSettings()

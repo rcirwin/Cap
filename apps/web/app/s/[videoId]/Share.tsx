@@ -1,6 +1,5 @@
 "use client";
 
-import type { comments as commentsSchema } from "@cap/database/schema";
 import type { ViewerSettingKey } from "@cap/web-backend";
 import type { ImageUpload, Video } from "@cap/web-domain";
 import { useQuery } from "@tanstack/react-query";
@@ -27,9 +26,16 @@ import {
 } from "@/actions/videos/get-status";
 import type { OrganizationSettings } from "@/app/(org)/dashboard/dashboard-data";
 import { SignedImageUrl } from "@/components/SignedImageUrl";
+import { showCapMarketing } from "@/lib/cap-marketing";
+import type { CommentRow } from "@/lib/comment-row";
 import type { ShareDashboardDestination } from "@/lib/share-dashboard-destination";
+import { trackVideoView } from "@/lib/video-view-tracking";
 import { CaptionProvider } from "./_components/CaptionContext";
 import { DashboardBackLink } from "./_components/DashboardBackLink";
+import {
+	type GuestCommentsConfig,
+	GuestCommentsProvider,
+} from "./_components/guest/GuestComments";
 import { PlaybackProvider } from "./_components/playback/PlaybackContext";
 import { ShareVideo } from "./_components/ShareVideo";
 import { type ShareView, ShareViewToggle } from "./_components/ShareViewToggle";
@@ -50,17 +56,17 @@ const SummaryChapters = dynamic(() => import("./_components/SummaryChapters"));
 
 /**
  * The interactive walkthrough behind the header's "How does this work?".
- * Relative, so a custom domain or a self-hosted deployment links at its own
- * copy of the post rather than back at cap.so.
+ * Relative, so a custom domain links at its own copy of the post rather than
+ * back at cap.so. Self-hosted builds have no blog, so they hide the link.
  */
 const TIMELINE_GUIDE_URL = "/blog/timeline-view";
 
-type CommentWithAuthor = typeof commentsSchema.$inferSelect & {
+type CommentWithAuthor = CommentRow & {
 	authorName: string | null;
 	authorImage: ImageUpload.ImageUrl | null;
 };
 
-export type CommentType = typeof commentsSchema.$inferSelect & {
+export type CommentType = CommentRow & {
 	authorName?: string | null;
 	authorImage?: ImageUpload.ImageUrl | null;
 	sending?: boolean;
@@ -70,102 +76,6 @@ export type CommentType = typeof commentsSchema.$inferSelect & {
 	 * in place instead of remounting it (which would restart media playback).
 	 */
 	clientKey?: string;
-};
-
-const SESSION_STORAGE_KEY = "cap_tb_session_id";
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-const ensureAnalyticsSessionId = () => {
-	if (typeof window === "undefined") return "anonymous";
-	try {
-		const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
-		const now = Date.now();
-		if (raw) {
-			const parsed = JSON.parse(raw) as { value: string; expiry: number };
-			if (parsed?.value && parsed.expiry > now) return parsed.value;
-		}
-		const newId =
-			typeof crypto !== "undefined" && "randomUUID" in crypto
-				? crypto.randomUUID()
-				: Math.random().toString(36).slice(2);
-		window.localStorage.setItem(
-			SESSION_STORAGE_KEY,
-			JSON.stringify({ value: newId, expiry: now + SESSION_TTL_MS }),
-		);
-		return newId;
-	} catch (error) {
-		console.warn("Failed to persist analytics session id", error);
-		return "anonymous";
-	}
-};
-
-const trackVideoView = (payload: {
-	videoId: string;
-	orgId?: string | null;
-	ownerId?: string | null;
-}) => {
-	if (typeof window === "undefined") return;
-	const sessionId = ensureAnalyticsSessionId();
-	const screen = window.screen;
-	const body = {
-		videoId: payload.videoId,
-		orgId: payload.orgId,
-		ownerId: payload.ownerId,
-		sessionId,
-		pathname: window.location.pathname,
-		href: window.location.href,
-		referrer: document.referrer,
-		hostname: window.location.hostname,
-		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-		language: typeof navigator !== "undefined" ? navigator.language : undefined,
-		locale:
-			typeof navigator !== "undefined" && navigator.languages?.length
-				? navigator.languages[0]
-				: undefined,
-		screen: screen
-			? {
-					width: screen.width,
-					height: screen.height,
-					colorDepth: screen.colorDepth,
-				}
-			: undefined,
-		userAgent:
-			typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-		occurredAt: new Date().toISOString(),
-	};
-
-	const serializedBody = JSON.stringify(body);
-
-	if (
-		typeof navigator !== "undefined" &&
-		typeof navigator.sendBeacon === "function"
-	) {
-		try {
-			const beaconPayload = new Blob([serializedBody], {
-				type: "application/json",
-			});
-			const queued = navigator.sendBeacon(
-				"/api/analytics/track",
-				beaconPayload,
-			);
-			if (queued) {
-				return;
-			}
-		} catch (error) {
-			console.warn("Falling back to fetch for analytics tracking", error);
-		}
-	}
-
-	void fetch("/api/analytics/track", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: serializedBody,
-		keepalive: true,
-	}).catch((error) => {
-		if (error?.name !== "AbortError") {
-			console.warn("Failed to track analytics event", error);
-		}
-	});
 };
 
 type AiGenerationStatus =
@@ -210,6 +120,8 @@ interface ShareProps {
 	captionsInitiallyOff?: boolean;
 	canRecordMedia?: boolean;
 	viewerSignedIn?: boolean;
+	/** Set when this signed-out viewer may comment or react with just a name. */
+	guestComments?: GuestCommentsConfig | null;
 	/**
 	 * The page header. Passed in rather than rendered above `Share` so the
 	 * timeline view can swap it for a slim bar without the page owning which
@@ -321,7 +233,22 @@ const useVideoStatus = (
 	});
 };
 
-export const Share = ({
+export const Share = ({ guestComments = null, ...props }: ShareProps) => (
+	<GuestCommentsProvider
+		config={guestComments}
+		onGuestNameSaved={() =>
+			trackVideoView({
+				videoId: props.data.id,
+				orgId: props.data.orgId,
+				ownerId: props.data.owner.id,
+			})
+		}
+	>
+		<ShareContent {...props} />
+	</GuestCommentsProvider>
+);
+
+const ShareContent = ({
 	data,
 	initialPlaybackUrl,
 	comments,
@@ -341,7 +268,7 @@ export const Share = ({
 	viewerSignedIn = false,
 	header,
 	dashboardDestination = null,
-}: ShareProps) => {
+}: Omit<ShareProps, "guestComments">) => {
 	const isScreenshot = data.isScreenshot === true;
 	// Memoized: a fresh Date each render would defeat the memoized `data`
 	// objects below and re-render Sidebar's whole tree on every poll tick.
@@ -822,27 +749,29 @@ export const Share = ({
 											{/* Same shell as the Player/Timeline toggle beside it —
 											    p-0.5 track, px-3 py-1 segment — so the header reads
 											    as one family of controls, not two pill dialects. */}
-											<a
-												href={TIMELINE_GUIDE_URL}
-												target="_blank"
-												rel="noreferrer"
-												title="How does the timeline work?"
-												className="inline-flex shrink-0 items-center rounded-full border border-gray-5 bg-gray-3 p-0.5 text-xs font-medium text-gray-11 transition-colors hover:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-9"
-											>
-												<span className="flex items-center gap-1.5 rounded-full px-3 py-1">
-													<svg
-														viewBox="0 0 16 16"
-														className="size-3.5 shrink-0 fill-current"
-														aria-hidden
-													>
-														<title>How does this work?</title>
-														<path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 1.2a5.3 5.3 0 1 1 0 10.6A5.3 5.3 0 0 1 8 2.7Zm0 1.6c-1.2 0-2.1.7-2.4 1.8a.6.6 0 0 0 1.15.34c.16-.55.6-.94 1.25-.94.7 0 1.2.44 1.2 1.03 0 .45-.2.73-.78 1.14-.66.47-.99.94-.96 1.72a.6.6 0 0 0 1.2-.04c-.02-.35.1-.53.53-.83.75-.53 1.21-1.08 1.21-2 0-1.25-1.02-2.22-2.4-2.22Zm0 6.05a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-													</svg>
-													<span className="hidden md:inline">
-														How does this work?
+											{showCapMarketing() && (
+												<a
+													href={TIMELINE_GUIDE_URL}
+													target="_blank"
+													rel="noreferrer"
+													title="How does the timeline work?"
+													className="inline-flex shrink-0 items-center rounded-full border border-gray-5 bg-gray-3 p-0.5 text-xs font-medium text-gray-11 transition-colors hover:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-9"
+												>
+													<span className="flex items-center gap-1.5 rounded-full px-3 py-1">
+														<svg
+															viewBox="0 0 16 16"
+															className="size-3.5 shrink-0 fill-current"
+															aria-hidden
+														>
+															<title>How does this work?</title>
+															<path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 1.2a5.3 5.3 0 1 1 0 10.6A5.3 5.3 0 0 1 8 2.7Zm0 1.6c-1.2 0-2.1.7-2.4 1.8a.6.6 0 0 0 1.15.34c.16-.55.6-.94 1.25-.94.7 0 1.2.44 1.2 1.03 0 .45-.2.73-.78 1.14-.66.47-.99.94-.96 1.72a.6.6 0 0 0 1.2-.04c-.02-.35.1-.53.53-.83.75-.53 1.21-1.08 1.21-2 0-1.25-1.02-2.22-2.4-2.22Zm0 6.05a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
+														</svg>
+														<span className="hidden md:inline">
+															How does this work?
+														</span>
 													</span>
-												</span>
-											</a>
+												</a>
+											)}
 											<ShareViewToggle
 												view={view}
 												onChange={setViewAndUrl}

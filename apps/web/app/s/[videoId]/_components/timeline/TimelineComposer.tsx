@@ -7,6 +7,7 @@ import { newComment } from "@/actions/videos/new-comment";
 import { useCurrentUser } from "@/app/Layout/AuthContext";
 import type { CommentType } from "../../Share";
 import { AuthOverlay } from "../AuthOverlayLazy";
+import { GuestIdentityBar, useGuestComments } from "../guest/GuestComments";
 import { MicGlyph } from "./TimelineBranch";
 import { useTimelineActions, useTimelineState } from "./TimelineProvider";
 import {
@@ -70,6 +71,7 @@ export function TimelineComposer({
 	const { composerAnchor } = useTimelineState();
 	const { closeComposer } = useTimelineActions();
 	const user = useCurrentUser();
+	const guestComments = useGuestComments();
 	const reduceMotion = useReducedMotion() ?? false;
 	const [value, setValue] = useState("");
 	const [showAuthOverlay, setShowAuthOverlay] = useState(false);
@@ -77,6 +79,9 @@ export function TimelineComposer({
 	// Both have to agree: the page was rendered for a signed-in viewer and the
 	// client knows who that is.
 	const canComment = viewerSignedIn && user !== null;
+	const guest = user === null && !viewerSignedIn ? guestComments : null;
+	const guestCanComment = Boolean(guest?.canComment);
+	const canWrite = canComment || guestCanComment;
 	const anchorTime = composerAnchor?.t ?? 0;
 
 	useEffect(() => {
@@ -90,7 +95,33 @@ export function TimelineComposer({
 
 	const submit = async () => {
 		const content = value.trim();
-		if (!content || !user || !canComment) return;
+		if (!content) return;
+
+		if (guest && guestCanComment) {
+			await guest.postComment(
+				{
+					videoId,
+					type: "text",
+					content,
+					parentCommentId: Comment.CommentId.make(""),
+					timestamp: anchorTime,
+				},
+				{
+					onOptimistic: (optimistic) => {
+						onOptimisticComment?.(optimistic);
+						setValue("");
+						closeComposer();
+					},
+					onSuccess: (saved) =>
+						startTransition(() => {
+							onCommentSuccess?.(saved);
+						}),
+				},
+			);
+			return;
+		}
+
+		if (!user || !canComment) return;
 
 		const optimistic: CommentType = {
 			id: Comment.CommentId.make(`temp-${Date.now()}`),
@@ -179,13 +210,13 @@ export function TimelineComposer({
 									{formatClock(anchorTime)}
 								</span>
 								<span className="text-xs text-gray-10">
-									{canComment
+									{canWrite
 										? "Comment at this moment"
 										: "Join the conversation"}
 								</span>
 							</div>
 
-							{canComment ? (
+							{canWrite ? (
 								<input
 									// biome-ignore lint/a11y/noAutofocus: the composer is opened by an explicit click.
 									autoFocus
@@ -222,7 +253,7 @@ export function TimelineComposer({
 							    button — that blur closes the composer, and the click would
 							    land on an unmounted node. */}
 							<div
-								className="flex h-8 items-center gap-1"
+								className="flex min-h-8 items-center gap-1"
 								onPointerDown={(event) => event.preventDefault()}
 							>
 								{onRecordIntent
@@ -244,7 +275,9 @@ export function TimelineComposer({
 												<RecordIcon kind={option.kind} />
 											</button>
 										))
-									: null}
+									: guestCanComment && (
+											<GuestIdentityBar className="w-full min-w-0" />
+										)}
 							</div>
 						</div>
 					</motion.div>

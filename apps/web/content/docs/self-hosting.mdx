@@ -120,6 +120,20 @@ OPENAI_API_KEY=your-key      # AI features
 ANTHROPIC_API_KEY=your-key   # AI features
 ```
 
+Transcription uses AssemblyAI when `ASSEMBLY_API_KEY` is set. Otherwise it
+uses any OpenAI-compatible Whisper endpoint, defaulting to Groq's free tier
+(`whisper-large-v3-turbo`) with your `GROQ_API_KEY`. Point it at OpenAI or a
+local server such as speaches with `TRANSCRIPTION_BASE_URL`,
+`TRANSCRIPTION_API_KEY`, and `TRANSCRIPTION_MODEL`, or force a provider with
+`TRANSCRIPTION_PROVIDER` (`assemblyai` or `openai-compatible`). Live
+transcription while an instant recording uploads is AssemblyAI-only.
+
+```bash
+TRANSCRIPTION_BASE_URL=https://api.openai.com/v1
+TRANSCRIPTION_API_KEY=sk-...
+TRANSCRIPTION_MODEL=whisper-1
+```
+
 When `AI_PROVIDER` is not set, AI providers are auto-detected from whichever
 keys are present. Generation features (titles, summaries, chapters,
 translation) prefer Groq → OpenAI → Anthropic; chat features (the support

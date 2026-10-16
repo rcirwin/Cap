@@ -12,6 +12,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { PublicCapCard } from "@/components/PublicCapCard";
+import { capHomeHref, showCapMarketing } from "@/lib/cap-marketing";
 import {
 	GRID_COLUMN_CLASS,
 	sanitizeCtaUrl,
@@ -170,7 +171,7 @@ export default async function PublicCollectionPage(
 					<div className="flex justify-between items-center px-4 mx-auto max-w-7xl h-16 sm:px-6 lg:px-8">
 						{branding ? (
 							branding.type === "cap" ? (
-								<Link href="/?ref=collection" aria-label="Cap home">
+								<Link href={capHomeHref("collection")} aria-label="Cap home">
 									<BrandingMark branding={branding} />
 								</Link>
 							) : (
@@ -203,7 +204,9 @@ export default async function PublicCollectionPage(
 			</main>
 
 			<CollectionFooter
-				showPoweredBy={data.collection.publicPage.logoMode !== "none"}
+				showPoweredBy={
+					showCapMarketing() && data.collection.publicPage.logoMode !== "none"
+				}
 			/>
 		</div>
 	);

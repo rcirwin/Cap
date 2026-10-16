@@ -23,6 +23,7 @@ import {
 	isInternalRecordingKey,
 } from "../Storage/recording-output.ts";
 import { Tinybird } from "../Tinybird/index.ts";
+import { ViewAnalytics } from "../ViewAnalytics/index.ts";
 import { VideosPolicy } from "./VideosPolicy.ts";
 import type { CreateVideoInput as RepoCreateVideoInput } from "./VideosRepo.ts";
 import { VideosRepo } from "./VideosRepo.ts";
@@ -131,6 +132,7 @@ export class Videos extends Effect.Service<Videos>()("Videos", {
 		const policy = yield* VideosPolicy;
 		const storage = yield* StorageService;
 		const tinybird = yield* Tinybird;
+		const viewAnalytics = yield* ViewAnalytics;
 
 		const getByIdForViewing = (id: Video.VideoId) =>
 			policy.getViewableById(id).pipe(Effect.withSpan("Videos.getById"));
@@ -146,6 +148,27 @@ export class Videos extends Effect.Service<Videos>()("Videos", {
 				const from = new Date(
 					now.getTime() - DEFAULT_ANALYTICS_RANGE_DAYS * 24 * 60 * 60 * 1000,
 				);
+
+				if (!tinybird.enabled) {
+					const videoIds = analyticsVideos.map((video) => video.id);
+					return yield* viewAnalytics
+						.countsByPathname(videoIds, { from, to: now })
+						.pipe(
+							Effect.catchAll((error) =>
+								Effect.logError(
+									"MySQL view analytics query failed",
+									error,
+								).pipe(
+									Effect.as(
+										new Map(
+											videoIds.map((videoId) => [buildPathname(videoId), 0]),
+										),
+									),
+								),
+							),
+						);
+				}
+
 				const countsByPathname = new Map<string, number>();
 
 				const videosByOrg = new Map<
@@ -830,5 +853,6 @@ export class Videos extends Effect.Service<Videos>()("Videos", {
 		Database.Default,
 		StorageService.Default,
 		Tinybird.Default,
+		ViewAnalytics.Default,
 	],
 }) {}
