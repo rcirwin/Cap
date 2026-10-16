@@ -29,6 +29,16 @@ function createServerEnv() {
 			// Cap uses Resend for email sending, including sending login code emails
 			RESEND_API_KEY: z.string().optional(),
 			RESEND_FROM_DOMAIN: z.string().optional(),
+			SMTP_URL: z
+				.string()
+				.optional()
+				.describe(
+					"SMTP connection URL (e.g. smtps://user:pass@smtp.gmail.com:465), used when RESEND_API_KEY is unset",
+				),
+			EMAIL_FROM: z
+				.string()
+				.optional()
+				.describe('From address for SMTP email, e.g. "Cap <me@example.com>"'),
 
 			/// S3 configuration
 			// Though they are prefixed with `CAP_AWS`, these don't have to be
@@ -76,6 +86,9 @@ function createServerEnv() {
 			WORKOS_API_KEY: z.string().optional(),
 
 			/// Settings
+			CAP_GUEST_COMMENTS: boolString(false).describe(
+				"Let signed-out viewers comment and react with just a display name",
+			),
 			CAP_VIDEOS_DEFAULT_PUBLIC: boolString(true).describe(
 				"Should videos be public or private by default",
 			),
