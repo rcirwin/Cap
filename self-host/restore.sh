@@ -45,7 +45,10 @@ latest() { rclone lsf "dest:$bucket/$1" --files-only | sort | tail -n 1; }
 
 config=$(latest config)
 dump=$(latest db)
-[ -n "$config" ] && [ -n "$dump" ] || { echo "no backups found in $bucket" >&2; exit 1; }
+if [ -z "$config" ] || [ -z "$dump" ]; then
+	echo "no backups found in $bucket" >&2
+	exit 1
+fi
 
 echo "This replaces Cap's configuration, database and videos with:"
 echo "  config/$config"

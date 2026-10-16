@@ -36,7 +36,10 @@ if [ -z "$smtp_url" ]; then
 	read -r -s -p "Gmail app password (16 letters): " app_password </dev/tty || true
 	printf '\n'
 	app_password=${app_password// /}
-	[ -n "$gmail" ] && [ -n "$app_password" ] || { echo "address and app password are required" >&2; exit 1; }
+	if [ -z "$gmail" ] || [ -z "$app_password" ]; then
+		echo "address and app password are required" >&2
+		exit 1
+	fi
 	smtp_url="smtps://$(urlencode "$gmail"):$(urlencode "$app_password")@smtp.gmail.com:465"
 	email_from=${email_from:-"Cap <$gmail>"}
 fi
