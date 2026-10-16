@@ -157,7 +157,7 @@ describe("POST /api/analytics/track without Tinybird", () => {
 		expect(response.status).toBe(200);
 		const [insert] = inserts();
 		expect(insert?.sql).toContain("on duplicate key update");
-		expect(insert?.sql).toContain("COALESCE(`video_views`.`viewerName`, ?)");
+		expect(insert?.sql).toContain("COALESCE(?, `video_views`.`viewerName`)");
 		expect(insert?.sql).toContain("COALESCE(`video_views`.`viewerUserId`, ?)");
 		expect(insert?.params.slice(1, 12)).toEqual([
 			"video-1",
@@ -185,7 +185,7 @@ describe("POST /api/analytics/track without Tinybird", () => {
 		});
 		await vi.waitFor(() =>
 			expect(createAnonymousViewNotification).toHaveBeenCalledWith(
-				expect.objectContaining({ anonName: "Ada" }),
+				expect.objectContaining({ anonName: "Ada", isGuestName: true }),
 			),
 		);
 	});
@@ -197,6 +197,7 @@ describe("POST /api/analytics/track without Tinybird", () => {
 			expect(createAnonymousViewNotification).toHaveBeenCalledWith(
 				expect.objectContaining({
 					anonName: expect.stringMatching(/^Anonymous /),
+					isGuestName: false,
 				}),
 			),
 		);

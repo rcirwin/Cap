@@ -156,7 +156,7 @@ export class ViewAnalytics extends Effect.Service<ViewAnalytics>()(
 						.onDuplicateKeyUpdate({
 							set: {
 								viewerUserId: Dz.sql`COALESCE(${Db.videoViews.viewerUserId}, ${view.viewerUserId})`,
-								viewerName: Dz.sql`COALESCE(${Db.videoViews.viewerName}, ${view.viewerName})`,
+								viewerName: Dz.sql`COALESCE(${view.viewerName}, ${Db.videoViews.viewerName})`,
 							},
 						}),
 				);

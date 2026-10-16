@@ -234,7 +234,16 @@ const useVideoStatus = (
 };
 
 export const Share = ({ guestComments = null, ...props }: ShareProps) => (
-	<GuestCommentsProvider config={guestComments}>
+	<GuestCommentsProvider
+		config={guestComments}
+		onGuestNameSaved={() =>
+			trackVideoView({
+				videoId: props.data.id,
+				orgId: props.data.orgId,
+				ownerId: props.data.owner.id,
+			})
+		}
+	>
 		<ShareContent {...props} />
 	</GuestCommentsProvider>
 );

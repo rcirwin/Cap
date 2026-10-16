@@ -345,11 +345,13 @@ export async function createAnonymousViewNotification({
 	sessionId,
 	anonName,
 	location,
+	isGuestName = false,
 }: {
 	videoId: string;
 	sessionId: string;
 	anonName: string;
 	location: string | null;
+	isGuestName?: boolean;
 }) {
 	const sessionHash = getSessionHash(sessionId);
 	const dedupKey = `anon_view:${videoId}:${sessionHash}`;
@@ -359,12 +361,20 @@ export async function createAnonymousViewNotification({
 		const database = db();
 
 		const [existingNotification] = await database
-			.select({ id: notifications.id })
+			.select({ id: notifications.id, data: notifications.data })
 			.from(notifications)
 			.where(eq(notifications.dedupKey, dedupKey))
 			.limit(1);
 
-		if (existingNotification) return;
+		if (existingNotification) {
+			if (isGuestName && existingNotification.data.anonName !== anonName) {
+				await database
+					.update(notifications)
+					.set({ data: { ...existingNotification.data, anonName } })
+					.where(eq(notifications.id, existingNotification.id));
+			}
+			return;
+		}
 
 		const [videoWithOwner] = await database
 			.select({

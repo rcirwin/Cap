@@ -242,6 +242,7 @@ export async function POST(request: NextRequest) {
 							sessionId,
 							anonName,
 							location,
+							isGuestName: guestName !== null,
 						}),
 					).pipe(
 						Effect.catchAll((error) => {

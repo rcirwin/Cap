@@ -69,14 +69,19 @@ export const useGuestComments = () => useContext(GuestCommentsContext);
 
 export function GuestCommentsProvider({
 	config,
+	onGuestNameSaved,
 	children,
 }: {
 	config: GuestCommentsConfig | null;
+	onGuestNameSaved?: (name: string) => void;
 	children: ReactNode;
 }) {
 	if (!config) return children;
 	return (
-		<ActiveGuestCommentsProvider config={config}>
+		<ActiveGuestCommentsProvider
+			config={config}
+			onGuestNameSaved={onGuestNameSaved}
+		>
 			{children}
 		</ActiveGuestCommentsProvider>
 	);
@@ -84,9 +89,11 @@ export function GuestCommentsProvider({
 
 function ActiveGuestCommentsProvider({
 	config,
+	onGuestNameSaved,
 	children,
 }: {
 	config: GuestCommentsConfig;
+	onGuestNameSaved?: (name: string) => void;
 	children: ReactNode;
 }) {
 	const [guestName, setGuestName] = useState<string | null>(null);
@@ -135,8 +142,9 @@ function ActiveGuestCommentsProvider({
 			setError(null);
 			setNameDialog((current) => ({ ...current, open: false }));
 			settlePendingName(name);
+			onGuestNameSaved?.(name);
 		},
-		[settlePendingName],
+		[settlePendingName, onGuestNameSaved],
 	);
 
 	const dismissNameDialog = useCallback(() => {
