@@ -39,6 +39,8 @@ export const NotificationItem = ({
 	};
 
 	const isAnonView = notification.type === "anon_view";
+	const showAnimalAvatar =
+		isAnonView && notification.anonName.startsWith("Anonymous ");
 	const displayName =
 		notification.type === "anon_view"
 			? notification.anonName
@@ -54,14 +56,18 @@ export const NotificationItem = ({
 			)}
 		>
 			<div className="relative flex-shrink-0">
-				{isAnonView ? (
+				{showAnimalAvatar ? (
 					<AnimalAvatar
 						name={displayName}
 						className="relative flex-shrink-0 size-7"
 					/>
 				) : (
 					<SignedImageUrl
-						image={notification.author.avatar as ImageUpload.ImageUrl | null}
+						image={
+							notification.type === "anon_view"
+								? null
+								: (notification.author.avatar as ImageUpload.ImageUrl | null)
+						}
 						name={displayName}
 						className="relative flex-shrink-0 size-7"
 						letterClass="text-sm"

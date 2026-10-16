@@ -8,6 +8,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
+import { formatBucketLabel } from "../bucket-label";
 
 export const description = "An area chart with gradient fill";
 
@@ -238,14 +239,3 @@ function ChartArea({ selectedMetrics, data, isLoading }: ChartAreaProps) {
 }
 
 export default ChartArea;
-
-const formatBucketLabel = (bucket: string, hourly: boolean) => {
-	const date = new Date(bucket);
-	if (Number.isNaN(date.getTime())) return bucket;
-	if (hourly)
-		return date.toLocaleTimeString([], {
-			hour: "numeric",
-			minute: undefined,
-		});
-	return date.toLocaleDateString([], { month: "short", day: "numeric" });
-};

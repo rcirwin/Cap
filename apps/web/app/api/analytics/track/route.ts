@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
 			}
 
 			if (!userId && sessionId && isNewVideo) {
-				const anonName = getAnonymousName(sessionId);
+				const anonName = guestName ?? getAnonymousName(sessionId);
 				const location =
 					city && country ? `${city}, ${country}` : city || country || null;
 

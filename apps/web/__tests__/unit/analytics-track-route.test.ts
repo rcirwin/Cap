@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createAnonymousViewNotification } from "@/lib/Notification";
 
 const mocks = vi.hoisted(() => ({
 	query: vi.fn(),
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	video: {
 		ownerId: "owner-1",
 		orgId: "org-1",
+		createdAt: "2025-01-01 00:00:00",
 		activeUploadVideoId: null as string | null,
 	},
 }));
@@ -22,8 +24,8 @@ vi.mock("@cap/database", async () => {
 });
 
 vi.mock("@/lib/Notification", () => ({
-	createAnonymousViewNotification: vi.fn(),
-	sendFirstViewEmail: vi.fn(),
+	createAnonymousViewNotification: vi.fn(async () => undefined),
+	sendFirstViewEmail: vi.fn(async () => undefined),
 }));
 
 vi.mock("@cap/web-backend", async (importOriginal) => {
@@ -112,8 +114,10 @@ beforeEach(() => {
 	mocks.video = {
 		ownerId: "owner-1",
 		orgId: "org-1",
+		createdAt: "2025-01-01 00:00:00",
 		activeUploadVideoId: null,
 	};
+	vi.mocked(createAnonymousViewNotification).mockClear();
 	mocks.query.mockImplementation(async (sql: string) => {
 		if (sql.startsWith("select") && sql.includes("from `videos`")) {
 			return {
@@ -123,8 +127,8 @@ beforeEach(() => {
 						mocks.video.orgId,
 						null,
 						"Demo",
-						"2025-01-01 00:00:00",
-						"2025-01-01 00:00:00",
+						mocks.video.createdAt,
+						mocks.video.createdAt,
 						mocks.video.activeUploadVideoId,
 					],
 				],
@@ -170,6 +174,32 @@ describe("POST /api/analytics/track without Tinybird", () => {
 		]);
 		expect(insert?.params).not.toContain("spoofed-org");
 		expect(consoleError).not.toHaveBeenCalled();
+	});
+
+	it("names anonymous view notifications after the guest when known", async () => {
+		mocks.video.createdAt = "2026-10-01 00:00:00";
+		await track({
+			videoId: "video-1",
+			sessionId: "session-guest",
+			guestName: " Ada ",
+		});
+		await vi.waitFor(() =>
+			expect(createAnonymousViewNotification).toHaveBeenCalledWith(
+				expect.objectContaining({ anonName: "Ada" }),
+			),
+		);
+	});
+
+	it("falls back to a generated animal name without a guest name", async () => {
+		mocks.video.createdAt = "2026-10-01 00:00:00";
+		await track({ videoId: "video-1", sessionId: "session-anon" });
+		await vi.waitFor(() =>
+			expect(createAnonymousViewNotification).toHaveBeenCalledWith(
+				expect.objectContaining({
+					anonName: expect.stringMatching(/^Anonymous /),
+				}),
+			),
+		);
 	});
 
 	it("attributes signed-in viewers without a session to their user", async () => {
