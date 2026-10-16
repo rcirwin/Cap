@@ -109,6 +109,38 @@ TRANSCRIPTION_MODEL=whisper-1
 
 Audio is re-encoded to 16 kHz mono before upload, and long recordings are split into chunks so they stay under provider size limits.
 
+## Email notifications (Gmail, free)
+
+Cap emails you when someone comments on a video (at most one email per video every 15 minutes) and emails sign-in codes, so you no longer need `login-code.sh`.
+
+1. Turn on 2-Step Verification for your Google account, then create an app password at <https://myaccount.google.com/apppasswords> (name it "Cap").
+2. On the server: `sudo /opt/cap/configure-email.sh` and paste the 16-letter app password.
+   The script restarts Cap and sends you a test sign-in code.
+
+Any SMTP provider works: run it with `SMTP_URL=smtps://user:pass@host:465` (and optionally `EMAIL_FROM="Cap <me@example.com>"`). If `RESEND_API_KEY` is set, Resend is used instead.
+
+## Backups (Cloudflare R2)
+
+`backup.sh` runs nightly at 08:00 UTC and copies everything off the server:
+
+| In the bucket | What | Kept |
+| --- | --- | --- |
+| `db/` | Gzipped MySQL dump | 14 days |
+| `config/` | `.env` (secrets!), compose file, Caddyfile | 14 days |
+| `videos/` | Incremental mirror of all recordings | Always |
+| `deleted/` | Recordings removed from Cap | 30 days |
+
+One-time setup:
+
+1. Cloudflare dashboard → **R2 Object Storage** → **Create bucket** → name it `cap-backups` (keep it private).
+2. **R2** → **Manage API tokens** → **Create API token**: permission **Object Read & Write**, apply to the `cap-backups` bucket only.
+3. Copy the **Access Key ID**, **Secret Access Key** and the **S3 endpoint** (`https://<account-id>.r2.cloudflarestorage.com`).
+4. On the server: `sudo /opt/cap/configure-backups.sh` and paste them. It runs the first backup immediately and schedules the nightly one.
+
+R2's free tier covers 10 GB of storage; beyond that it is about $0.015/GB-month. Check status with `journalctl -u cap-backup.service` or `cat /var/backups/cap/last-success`.
+
+**Restore** onto a fresh server: run `install.sh` as usual, then `sudo /opt/cap/restore.sh` (type `RESTORE` to confirm). It replaces the configuration, database and videos with the latest backup.
+
 ## Operations
 
 | Task | Command (in `/opt/cap`) |
@@ -117,7 +149,7 @@ Audio is re-encoded to 16 kHz mono before upload, and long recordings are split 
 | Status | `sudo docker compose ps` |
 | Logs | `sudo docker compose logs -f --tail 100 cap-web` |
 | Change a setting | `sudo ./set-env.sh KEY` |
-| Back up database | `sudo docker compose exec mysql sh -c 'mysqldump -ucap -p"$MYSQL_PASSWORD" cap' > cap.sql` |
+| Back up now | `sudo ./backup.sh` |
 
 ## License
 
