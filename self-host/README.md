@@ -3,6 +3,8 @@
 This fork runs Cap on a free Oracle Cloud server with:
 
 - **Public share links** at `https://<your-domain>/s/<video-id>`, each one public, password-protected, or private to you.
+- **Guest comments and reactions**: teammates comment with just a name, no account. You see who watched in **Seen by**, and view counts work without paid analytics.
+- **Email notifications** through Gmail SMTP, and **nightly backups** to Cloudflare R2.
 - **Chrome extension** recording (screen, tab, camera, mic) that uploads while you record and copies the share link the moment you stop.
 - **Free AI transcripts, titles, summaries and chapters** via Groq's free Whisper + LLM tier.
 - **Every Pro feature unlocked**: self-hosted builds treat every user as Pro.
@@ -90,6 +92,26 @@ On a video's page or in the dashboard:
 - **Private:** only you, signed in.
 
 New videos default to public. Set `CAP_VIDEOS_DEFAULT_PUBLIC=false` with `sudo /opt/cap/set-env.sh CAP_VIDEOS_DEFAULT_PUBLIC` to flip that.
+
+## Comments from teammates (no account needed)
+
+Anyone who can open a share link can comment, reply and react. The first time, they're asked for a display name, which is remembered in their browser. Guest comments show a small **Guest** badge.
+
+- You get an in-app notification for each one, plus an email when email is set up.
+- Guests can delete their own comments. As the video owner you can delete any comment on your videos.
+- Private and password-protected videos stay protected: guests can only comment where they can already watch.
+- Light rate limits stop spam: 20 comments per video per 10 minutes, 60 per hour overall, per visitor.
+- Turn it off with `sudo /opt/cap/set-env.sh CAP_GUEST_COMMENTS` and enter `false`. The existing per-video and org settings for disabling comments or reactions still apply.
+
+## Views and "Seen by"
+
+View counts work without Tinybird. They're stored in your own database and shown on cap cards, share pages and the dashboard **Analytics** page.
+
+- **Seen by:** on a video's share page, the **Activity** tab shows who watched, newest first. Only you and org admins can see it.
+  - Signed-in viewers appear by name.
+  - Guests who have commented appear by the name they gave.
+  - Everyone else gets a generated nickname, such as "Anonymous Otter".
+- Country and city breakdowns stay empty: Caddy doesn't provide location data on its own.
 
 ## Transcription options
 
