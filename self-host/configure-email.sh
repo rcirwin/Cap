@@ -31,17 +31,23 @@ smtp_url=${SMTP_URL:-}
 email_from=${EMAIL_FROM:-}
 
 if [ -z "$smtp_url" ]; then
-	read -r -p "Gmail address to send from [$owner]: " gmail </dev/tty || true
-	gmail=${gmail:-$owner}
-	read -r -s -p "Gmail app password (16 letters): " app_password </dev/tty || true
-	printf '\n'
-	app_password=${app_password// /}
-	if [ -z "$gmail" ] || [ -z "$app_password" ]; then
-		echo "address and app password are required" >&2
-		exit 1
-	fi
+	echo "Step 1 of 2: the Gmail ADDRESS that sends the emails (press Enter to use $owner)."
+	while true; do
+		read -r -p "Gmail address [$owner]: " gmail </dev/tty || true
+		gmail=${gmail:-$owner}
+		if [[ "$gmail" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then break; fi
+		echo "That doesn't look like an email address. Enter an address like you@gmail.com (the app password comes next)."
+	done
+	echo "Step 2 of 2: the 16-letter APP PASSWORD from https://myaccount.google.com/apppasswords (input is hidden)."
+	while true; do
+		read -r -s -p "App password: " app_password </dev/tty || true
+		printf '\n'
+		app_password=${app_password// /}
+		if [[ "$app_password" =~ ^[A-Za-z]{16}$ ]]; then break; fi
+		echo "Google app passwords are 16 letters (spaces are fine). Paste it again."
+	done
 	smtp_url="smtps://$(urlencode "$gmail"):$(urlencode "$app_password")@smtp.gmail.com:465"
-	email_from=${email_from:-"Cap <$gmail>"}
+	email_from="Cap <$gmail>"
 fi
 
 upsert_env SMTP_URL "$smtp_url"
